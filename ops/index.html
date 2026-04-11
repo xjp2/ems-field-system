@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedResponse - Hospital Operations Centre</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:wght,FILL@400..700,0..1&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        emergency: '#dc2626', 'emergency-dark': '#991b1b',
+                        warning: '#f59e0b', success: '#16a34a',
+                        dark: '#0a0a0a', 'dark-card': '#141414', 'dark-border': '#262626',
+                        ops: '#3b82f6', 'ops-dark': '#1d4ed8'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Inter', sans-serif; background: #0a0a0a; color: #fff; }
+        .material-symbols-rounded { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+        .card { background: #141414; border: 1px solid #262626; }
+        .status-dot { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0a0a; }
+        ::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #404040; }
+    </style>
+</head>
+<body class="min-h-screen">
+    <!-- Header -->
+    <header class="bg-dark-card border-b border-dark-border sticky top-0 z-50">
+        <div class="max-w-[1920px] mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-ops rounded-xl flex items-center justify-center">
+                        <span class="material-symbols-rounded text-2xl text-white">local_hospital</span>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-xl">Hospital Operations Centre</h1>
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full status-dot"></span>
+                            <span class="text-sm text-green-500">Live Feed Active</span>
+                            <span class="text-sm text-gray-500">|</span>
+                            <span class="text-sm text-gray-400" id="last-update">Updated: Just now</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="card rounded-lg px-4 py-2 flex items-center gap-3">
+                        <span class="material-symbols-rounded text-gray-400">calendar_today</span>
+                        <span class="text-sm" id="current-date">Loading...</span>
+                    </div>
+                    <div class="card rounded-lg px-4 py-2 flex items-center gap-3">
+                        <span class="material-symbols-rounded text-gray-400">schedule</span>
+                        <span class="text-lg font-bold font-mono" id="current-time">--:--:--</span>
+                    </div>
+                    <button class="bg-ops hover:bg-ops-dark px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-2">
+                        <span class="material-symbols-rounded">notifications</span>
+                        <span class="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">3</span>
+                    </button>
+                    <button class="w-10 h-10 card rounded-lg flex items-center justify-center hover:bg-gray-800 transition">
+                        <span class="material-symbols-rounded">settings</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-[1920px] mx-auto p-6">
+        <!-- Stats Overview -->
+        <div class="grid grid-cols-6 gap-4 mb-6">
+            <div class="card rounded-xl p-4">
+                <div class="text-sm text-gray-400 mb-1">Active Incidents</div>
+                <div class="text-3xl font-bold text-ops">4</div>
+                <div class="text-xs text-gray-500 mt-1">↑ 1 from last hour</div>
+            </div>
+            <div class="card rounded-xl p-4">
+                <div class="text-sm text-gray-400 mb-1">Critical (RED)</div>
+                <div class="text-3xl font-bold text-red-500">7</div>
+                <div class="text-xs text-gray-500 mt-1">Across all scenes</div>
+            </div>
+            <div class="card rounded-xl p-4">
+                <div class="text-sm text-gray-400 mb-1">Moderate (YELLOW)</div>
+                <div class="text-3xl font-bold text-yellow-500">12</div>
+                <div class="text-xs text-gray-500 mt-1">Across all scenes</div>
+            </div>
+            <div class="card rounded-xl p-4">
+                <div class="text-sm text-gray-400 mb-1">Minor (GREEN)</div>
+                <div class="text-3xl font-bold text-green-500">5</div>
+                <div class="text-xs text-gray-500 mt-1">Across all scenes</div>
+            </div>
+            <div class="card rounded-xl p-4">
+                <div class="text-sm text-gray-400 mb-1">Deceased (BLACK)</div>
+                <div class="text-3xl font-bold text-gray-500">1</div>
+                <div class="text-xs text-gray-500 mt-1">Across all scenes</div>
+            </div>
+            <div class="card rounded-xl p-4">
+                <div class="text-sm text-gray-400 mb-1">Field Teams</div>
+                <div class="text-3xl font-bold text-white">8</div>
+                <div class="text-xs text-green-500 mt-1">● All online</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-12 gap-6">
+            <!-- Left Column - Active Incidents -->
+            <div class="col-span-4 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="font-bold text-lg flex items-center gap-2">
+                        <span class="material-symbols-rounded text-ops">emergency</span>
+                        Active Incidents
+                    </h2>
+                    <button class="text-sm text-ops hover:text-ops-dark">View All</button>
+                </div>
+
+                <!-- Incident Cards -->
+                <div class="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
+                    <!-- Incident 1 -->
+                    <div class="card rounded-xl p-4 border-l-4 border-red-500 cursor-pointer hover:bg-gray-800/50 transition" onclick="selectIncident(1)">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-2 py-0.5 bg-red-900/50 text-red-400 text-xs font-bold rounded">ON SCENE</span>
+                                    <span class="text-xs text-gray-500">#492 • 14:32</span>
+                                </div>
+                                <h3 class="font-bold">Vehicle Accident</h3>
+                                <p class="text-sm text-gray-400">5th Avenue & Main Street</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold text-red-500">6</div>
+                                <div class="text-xs text-gray-500">Patients</div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-3">
+                            <span class="px-2 py-1 bg-red-900/30 text-red-400 text-xs font-bold rounded">3 RED</span>
+                            <span class="px-2 py-1 bg-yellow-900/30 text-yellow-400 text-xs font-bold rounded">2 YEL</span>
+                            <span class="px-2 py-1 bg-green-900/30 text-green-400 text-xs font-bold rounded">1 GRN</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-800">
+                            <span class="material-symbols-rounded text-gray-500 text-sm">person</span>
+                            <span class="text-xs text-gray-400">Team Alpha • Dr. John (Lead)</span>
+                        </div>
+                    </div>
+
+                    <!-- Incident 2 -->
+                    <div class="card rounded-xl p-4 border-l-4 border-yellow-500 cursor-pointer hover:bg-gray-800/50 transition" onclick="selectIncident(2)">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-2 py-0.5 bg-yellow-900/50 text-yellow-400 text-xs font-bold rounded">TREATING</span>
+                                    <span class="text-xs text-gray-500">#493 • 15:15</span>
+                                </div>
+                                <h3 class="font-bold">Workplace Injury</h3>
+                                <p class="text-sm text-gray-400">Industrial Zone B</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold text-yellow-500">2</div>
+                                <div class="text-xs text-gray-500">Patients</div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-3">
+                            <span class="px-2 py-1 bg-yellow-900/30 text-yellow-400 text-xs font-bold rounded">1 YEL</span>
+                            <span class="px-2 py-1 bg-green-900/30 text-green-400 text-xs font-bold rounded">1 GRN</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-800">
+                            <span class="material-symbols-rounded text-gray-500 text-sm">person</span>
+                            <span class="text-xs text-gray-400">Team Bravo • Dr. Sarah (Lead)</span>
+                        </div>
+                    </div>
+
+                    <!-- Incident 3 -->
+                    <div class="card rounded-xl p-4 border-l-4 border-green-500 cursor-pointer hover:bg-gray-800/50 transition" onclick="selectIncident(3)">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-2 py-0.5 bg-green-900/50 text-green-400 text-xs font-bold rounded">TRANSPORTING</span>
+                                    <span class="text-xs text-gray-500">#491 • 13:45</span>
+                                </div>
+                                <h3 class="font-bold">Fall Injury</h3>
+                                <p class="text-sm text-gray-400">Central Park Area</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold text-green-500">1</div>
+                                <div class="text-xs text-gray-500">Patient</div>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 mt-3">
+                            <span class="px-2 py-1 bg-green-900/30 text-green-400 text-xs font-bold rounded">1 GRN</span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-3 pt-3 border-t border-gray-800">
+                            <span class="material-symbols-rounded text-gray-500 text-sm">person</span>
+                            <span class="text-xs text-gray-400">Team Charlie • EMT Mike (Lead)</span>
+                        </div>
+                    </div>
+
+                    <!-- Incident 4 -->
+                    <div class="card rounded-xl p-4 border-l-4 border-red-500 opacity-50">
+                        <div class="flex items-start justify-between mb-2">
+                            <div>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="px-2 py-0.5 bg-gray-800 text-gray-400 text-xs font-bold rounded">HANDED OVER</span>
+                                    <span class="text-xs text-gray-500">#490 • 12:20</span>
+                                </div>
+                                <h3 class="font-bold">Medical Emergency</h3>
+                                <p class="text-sm text-gray-400">Downtown Mall</p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-2xl font-bold text-gray-500">2</div>
+                                <div class="text-xs text-gray-500">Patients</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Column - Map & Details -->
+            <div class="col-span-5 space-y-4">
+                <!-- Map Placeholder -->
+                <div class="card rounded-xl p-4 h-[400px] relative overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center">
+                        <div class="text-center">
+                            <span class="material-symbols-rounded text-6xl text-gray-600 mb-4">map</span>
+                            <p class="text-gray-500">Live Map View</p>
+                            <p class="text-sm text-gray-600">GPS tracking of all active incidents</p>
+                        </div>
+                    </div>
+                    <!-- Map Markers -->
+                    <div class="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                        <div class="w-4 h-4 bg-red-500 rounded-full animate-ping absolute"></div>
+                        <div class="w-4 h-4 bg-red-500 rounded-full relative border-2 border-white"></div>
+                        <div class="absolute top-5 left-1/2 -translate-x-1/2 bg-red-900/90 px-2 py-1 rounded text-xs font-bold whitespace-nowrap">Case #492</div>
+                    </div>
+                </div>
+
+                <!-- Selected Incident Detail -->
+                <div class="card rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-lg">Case #492 Details</h3>
+                        <button class="text-sm text-ops hover:text-ops-dark flex items-center gap-1">
+                            <span class="material-symbols-rounded text-sm">chat</span>
+                            Message Team
+                        </button>
+                    </div>
+                    
+                    <!-- Status Progress -->
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-rounded text-sm text-white">location_on</span>
+                            </div>
+                            <div class="w-16 h-0.5 bg-red-500"></div>
+                            <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-rounded text-sm text-white">stethoscope</span>
+                            </div>
+                            <div class="w-16 h-0.5 bg-red-500"></div>
+                            <div class="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
+                                <span class="material-symbols-rounded text-sm text-white">medication</span>
+                            </div>
+                            <div class="w-16 h-0.5 bg-gray-700"></div>
+                            <div class="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-rounded text-sm text-gray-400">local_shipping</span>
+                            </div>
+                            <div class="w-16 h-0.5 bg-gray-700"></div>
+                            <div class="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+                                <span class="material-symbols-rounded text-sm text-gray-400">check_circle</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500 px-1">
+                        <span class="text-red-400 font-medium">On Scene</span>
+                        <span class="text-red-400 font-medium">Assessing</span>
+                        <span class="text-red-400 font-medium">Treating</span>
+                        <span>Transport</span>
+                        <span>Handover</span>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="card rounded-xl p-4">
+                    <h3 class="font-bold mb-4 flex items-center gap-2">
+                        <span class="material-symbols-rounded text-ops">history</span>
+                        Recent Activity
+                    </h3>
+                    <div class="space-y-3 max-h-[200px] overflow-y-auto">
+                        <div class="flex items-start gap-3">
+                            <span class="text-xs text-gray-500 w-12">14:45</span>
+                            <div>
+                                <p class="text-sm"><span class="text-red-400 font-medium">RED Patient #1</span> updated</p>
+                                <p class="text-xs text-gray-500">IV Access established by Dr. John</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-xs text-gray-500 w-12">14:42</span>
+                            <div>
+                                <p class="text-sm"><span class="text-yellow-400 font-medium">YELLOW Patient #3</span> added</p>
+                                <p class="text-xs text-gray-500">Arm fracture - splint applied</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-xs text-gray-500 w-12">14:38</span>
+                            <div>
+                                <p class="text-sm">Status changed to <span class="text-red-400 font-medium">TREATING</span></p>
+                                <p class="text-xs text-gray-500">All patients assessed, interventions begun</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <span class="text-xs text-gray-500 w-12">14:32</span>
+                            <div>
+                                <p class="text-sm">Case <span class="text-ops font-medium">#492</span> opened</p>
+                                <p class="text-xs text-gray-500">Vehicle Accident at 5th & Main</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column - Patients & Resources -->
+            <div class="col-span-3 space-y-4">
+                <!-- Patient Summary -->
+                <div class="card rounded-xl p-4">
+                    <h3 class="font-bold mb-4 flex items-center gap-2">
+                        <span class="material-symbols-rounded text-ops">group</span>
+                        Patients (6)
+                    </h3>
+                    <div class="space-y-2 max-h-[300px] overflow-y-auto">
+                        <div class="flex items-center gap-3 p-2 bg-red-900/20 rounded-lg border border-red-900/30">
+                            <div class="w-10 h-10 bg-red-900/50 rounded-full flex items-center justify-center">
+                                <span class="font-bold text-red-400 text-sm">R</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">Unknown (Male, ~35)</p>
+                                <p class="text-xs text-gray-400 truncate">Head trauma, unconscious</p>
+                            </div>
+                            <span class="material-symbols-rounded text-gray-500 text-sm">chevron_right</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-red-900/20 rounded-lg border border-red-900/30">
+                            <div class="w-10 h-10 bg-red-900/50 rounded-full flex items-center justify-center">
+                                <span class="font-bold text-red-400 text-sm">R</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">Unknown (Female, ~28)</p>
+                                <p class="text-xs text-gray-400 truncate">Chest pain, difficulty breathing</p>
+                            </div>
+                            <span class="material-symbols-rounded text-gray-500 text-sm">chevron_right</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-red-900/20 rounded-lg border border-red-900/30">
+                            <div class="w-10 h-10 bg-red-900/50 rounded-full flex items-center justify-center">
+                                <span class="font-bold text-red-400 text-sm">R</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">Unknown (Male, ~42)</p>
+                                <p class="text-xs text-gray-400 truncate">Internal bleeding</p>
+                            </div>
+                            <span class="material-symbols-rounded text-gray-500 text-sm">chevron_right</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-yellow-900/20 rounded-lg border border-yellow-900/30">
+                            <div class="w-10 h-10 bg-yellow-900/50 rounded-full flex items-center justify-center">
+                                <span class="font-bold text-yellow-400 text-sm">Y</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">Unknown (Male, ~45)</p>
+                                <p class="text-xs text-gray-400 truncate">Arm fracture</p>
+                            </div>
+                            <span class="material-symbols-rounded text-gray-500 text-sm">chevron_right</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-yellow-900/20 rounded-lg border border-yellow-900/30">
+                            <div class="w-10 h-10 bg-yellow-900/50 rounded-full flex items-center justify-center">
+                                <span class="font-bold text-yellow-400 text-sm">Y</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">Unknown (Female, ~31)</p>
+                                <p class="text-xs text-gray-400 truncate">Leg laceration</p>
+                            </div>
+                            <span class="material-symbols-rounded text-gray-500 text-sm">chevron_right</span>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 bg-green-900/20 rounded-lg border border-green-900/30">
+                            <div class="w-10 h-10 bg-green-900/50 rounded-full flex items-center justify-center">
+                                <span class="font-bold text-green-400 text-sm">G</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-bold text-sm truncate">Unknown (Male, ~22)</p>
+                                <p class="text-xs text-gray-400 truncate">Minor cuts, walking wounded</p>
+                            </div>
+                            <span class="material-symbols-rounded text-gray-500 text-sm">chevron_right</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resource Allocation -->
+                <div class="card rounded-xl p-4">
+                    <h3 class="font-bold mb-4 flex items-center gap-2">
+                        <span class="material-symbols-rounded text-ops">local_shipping</span>
+                        Resources
+                    </h3>
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-rounded text-gray-400">ambulance</span>
+                                <span class="text-sm">Ambulance A1</span>
+                            </div>
+                            <span class="text-xs text-green-500">En Route</span>
+                        </div>
+                        <div class="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-rounded text-gray-400">ambulance</span>
+                                <span class="text-sm">Ambulance B2</span>
+                            </div>
+                            <span class="text-xs text-yellow-500">Standby</span>
+                        </div>
+                        <div class="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg">
+                            <div class="flex items-center gap-2">
+                                <span class="material-symbols-rounded text-gray-400">helicopter</span>
+                                <span class="text-sm">Medevac Heli</span>
+                            </div>
+                            <span class="text-xs text-gray-500">Available</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bed Availability -->
+                <div class="card rounded-xl p-4">
+                    <h3 class="font-bold mb-3 flex items-center gap-2">
+                        <span class="material-symbols-rounded text-ops">bed</span>
+                        Bed Availability
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="p-2 bg-red-900/20 rounded-lg text-center border border-red-900/30">
+                            <div class="text-lg font-bold text-red-400">3</div>
+                            <div class="text-xs text-gray-400">Trauma Bay</div>
+                        </div>
+                        <div class="p-2 bg-yellow-900/20 rounded-lg text-center border border-yellow-900/30">
+                            <div class="text-lg font-bold text-yellow-400">8</div>
+                            <div class="text-xs text-gray-400">Emergency</div>
+                        </div>
+                        <div class="p-2 bg-green-900/20 rounded-lg text-center border border-green-900/30">
+                            <div class="text-lg font-bold text-green-400">12</div>
+                            <div class="text-xs text-gray-400">General</div>
+                        </div>
+                        <div class="p-2 bg-gray-800 rounded-lg text-center">
+                            <div class="text-lg font-bold text-gray-400">2</div>
+                            <div class="text-xs text-gray-400">ICU</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('en-US', { hour12: false });
+            document.getElementById('current-date').textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Simulate live updates
+        function simulateUpdates() {
+            const times = ['Just now', '1 min ago', '2 min ago', 'Just now', 'Just now'];
+            document.getElementById('last-update').textContent = 'Updated: ' + times[Math.floor(Math.random() * times.length)];
+        }
+        setInterval(simulateUpdates, 30000);
+
+        // Select incident
+        function selectIncident(id) {
+            console.log('Selected incident:', id);
+            // Would load incident details
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#dc2626">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MedResponse">
+    <title>MedResponse - Field Response</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:wght,FILL@400..700,0..1&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        emergency: '#dc2626', 'emergency-dark': '#991b1b',
+                        warning: '#f59e0b', success: '#16a34a',
+                        dark: '#0f0f0f', 'dark-card': '#1a1a1a', 'dark-border': '#2a2a2a',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Inter', sans-serif; background: #0f0f0f; color: #fff; }
+        .material-symbols-rounded { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+        .screen { display: none; animation: fadeIn 0.2s ease; }
+        .screen.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .btn-emergency { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
+        .btn-emergency:active { transform: scale(0.98); }
+        .nav-item.active { color: #dc2626; }
+        .nav-item.active .nav-icon { font-variation-settings: 'FILL' 1, 'wght' 600; }
+        input, select, textarea { background: #1a1a1a; border: 1px solid #2a2a2a; color: #fff; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #dc2626; }
+        .card { background: #1a1a1a; border: 1px solid #2a2a2a; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; }
+        .modal.active { display: flex; align-items: flex-end; }
+        .observation-tag { background: #2a2a2a; padding: 4px 12px; border-radius: 16px; font-size: 12px; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+    </style>
+</head>
+<body class="min-h-screen pb-20">
+
+    <!-- LOGIN SCREEN -->
+    <div id="screen-login" class="screen active min-h-screen flex flex-col justify-center px-6 py-12">
+        <div class="mb-12">
+            <div class="w-16 h-16 bg-emergency rounded-2xl flex items-center justify-center mb-6">
+                <span class="material-symbols-rounded text-3xl text-white">emergency</span>
+            </div>
+            <h1 class="text-3xl font-bold mb-2">MedResponse</h1>
+            <p class="text-gray-400">Field Response System</p>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 block">Badge ID</label>
+                <input type="text" placeholder="Enter badge number" class="w-full px-4 py-4 rounded-xl text-lg">
+            </div>
+            <div>
+                <label class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 block">PIN</label>
+                <input type="password" placeholder="****" class="w-full px-4 py-4 rounded-xl text-lg" maxlength="4">
+            </div>
+            <button onclick="showScreen('screen-home')" class="w-full btn-emergency py-4 rounded-xl font-bold text-lg mt-6">
+                ENTER SYSTEM
+            </button>
+        </div>
+        <div class="mt-8 text-center">
+            <button class="text-sm text-gray-500">Emergency Override</button>
+        </div>
+    </div>
+
+    <!-- HOME / ACTIVE CASE SCREEN -->
+    <div id="screen-home" class="screen">
+        <header class="sticky top-0 z-50 bg-dark/95 backdrop-blur border-b border-dark-border px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-emergency rounded-xl flex items-center justify-center">
+                        <span class="material-symbols-rounded text-white">medical_services</span>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-tight">Field Response</h1>
+                        <p class="text-xs text-gray-400">Medical Team</p>
+                    </div>
+                </div>
+                <!-- PWA Install Button (hidden by default, shown when installable) -->
+                <button id="install-btn" class="hidden w-10 h-10 flex items-center justify-center rounded-xl bg-emergency mr-2" onclick="installPWA()">
+                    <span class="material-symbols-rounded text-white">download</span>
+                </button>
+                <button class="w-10 h-10 flex items-center justify-center rounded-xl bg-dark-card">
+                    <span class="material-symbols-rounded text-gray-400">settings</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="p-4 space-y-4">
+            <!-- LOG NEW INCIDENT BUTTON -->
+            <button onclick="showScreen('screen-new-incident')" class="w-full btn-emergency py-6 rounded-2xl flex items-center justify-center gap-3 font-bold text-xl shadow-lg shadow-red-900/30">
+                <span class="material-symbols-rounded text-3xl">add_circle</span>
+                LOG NEW INCIDENT
+            </button>
+
+            <!-- Active Case Card -->
+            <div class="card rounded-2xl p-4" id="active-case-card">
+                <div class="flex items-start justify-between mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-xs font-bold text-emergency uppercase tracking-wider">ACTIVE CASE</span>
+                            <span class="px-1.5 py-0.5 bg-emergency/20 text-emergency text-[10px] font-bold rounded" id="active-case-status">ON SCENE</span>
+                        </div>
+                        <h2 class="text-xl font-bold mt-1" id="active-case-title">Vehicle Accident</h2>
+                        <p class="text-sm text-gray-400 mt-1" id="active-case-location">5th Avenue & Main Street</p>
+                        <p class="text-xs text-gray-500 mt-1" id="active-case-status-time">Updated 14:32</p>
+                    </div>
+                    <span class="px-2 py-1 bg-emergency/20 text-emergency text-xs font-bold rounded-lg" id="active-case-time">14:32</span>
+                </div>
+                <div class="flex gap-2 mb-4" id="active-case-triage">
+                    <span class="px-2 py-1 bg-red-900/50 text-red-300 text-xs font-bold rounded">3 RED</span>
+                    <span class="px-2 py-1 bg-yellow-900/50 text-yellow-300 text-xs font-bold rounded">2 YELLOW</span>
+                    <span class="px-2 py-1 bg-green-900/50 text-green-300 text-xs font-bold rounded">1 GREEN</span>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="showScreen('screen-incident')" class="flex-1 py-3 bg-white/10 rounded-xl font-semibold text-sm hover:bg-white/20 transition">
+                        VIEW CASE
+                    </button>
+                    <button onclick="closeCase()" class="py-3 px-4 bg-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-600 transition flex items-center gap-2">
+                        <span class="material-symbols-rounded text-sm">check_circle</span>
+                        CLOSE CASE
+                    </button>
+                </div>
+            </div>
+
+            <!-- No Active Case State (Hidden by default) -->
+            <div class="card rounded-2xl p-8 text-center hidden" id="no-active-case">
+                <span class="material-symbols-rounded text-4xl text-gray-600 mb-3">medical_services</span>
+                <p class="text-gray-400">No active case</p>
+                <p class="text-sm text-gray-500 mt-1">Log a new incident to begin</p>
+            </div>
+
+            <!-- Recent Cases -->
+            <h3 class="font-bold text-sm text-gray-400 uppercase tracking-wider mt-6">Today (<span id="case-count">3</span>)</h3>
+            <div id="recent-cases">
+                <div class="card rounded-2xl p-4 opacity-60 mb-2">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-bold">Fall Injury</h4>
+                            <p class="text-sm text-gray-400">Central Park Area</p>
+                        </div>
+                        <span class="text-xs text-gray-500">12:15</span>
+                    </div>
+                </div>
+                <div class="card rounded-2xl p-4 opacity-60">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="font-bold">Workplace Injury</h4>
+                            <p class="text-sm text-gray-400">Industrial Zone B</p>
+                        </div>
+                        <span class="text-xs text-gray-500">09:42</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- NEW INCIDENT SCREEN -->
+    <div id="screen-new-incident" class="screen">
+        <header class="sticky top-0 z-50 bg-dark/95 backdrop-blur border-b border-dark-border px-4 py-4">
+            <div class="flex items-center gap-4">
+                <button onclick="showScreen('screen-home')" class="w-10 h-10 flex items-center justify-center rounded-xl bg-dark-card">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                </button>
+                <h1 class="font-bold text-lg">Log New Incident</h1>
+            </div>
+        </header>
+
+        <main class="p-4 space-y-6">
+            <!-- 1. SITUATION -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">1. Situation Type *</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <button class="situation-btn card p-4 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-value="Vehicle Accident">
+                        <span class="material-symbols-rounded text-2xl mb-2">car_crash</span>
+                        <div class="font-bold text-sm">Vehicle Accident</div>
+                    </button>
+                    <button class="situation-btn card p-4 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-value="Injury / Trauma">
+                        <span class="material-symbols-rounded text-2xl mb-2">personal_injury</span>
+                        <div class="font-bold text-sm">Injury / Trauma</div>
+                    </button>
+                    <button class="situation-btn card p-4 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-value="Medical Emergency">
+                        <span class="material-symbols-rounded text-2xl mb-2">ecg_heart</span>
+                        <div class="font-bold text-sm">Medical Emergency</div>
+                    </button>
+                    <button class="situation-btn card p-4 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-value="Fire / Burns">
+                        <span class="material-symbols-rounded text-2xl mb-2">local_fire_department</span>
+                        <div class="font-bold text-sm">Fire / Burns</div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 2. LOCATION -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">2. Location *</label>
+                <div class="relative">
+                    <input type="text" id="location-input" placeholder="Enter address or landmark" class="w-full px-4 py-4 rounded-xl pr-12">
+                    <button onclick="getLocation()" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-emergency">
+                        <span class="material-symbols-rounded">my_location</span>
+                    </button>
+                </div>
+                <p id="location-status" class="text-xs text-gray-500 mt-2 hidden">Getting location...</p>
+            </section>
+
+            <!-- 3. CASUALTY COUNT -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">3. Casualties</label>
+                <div class="grid grid-cols-4 gap-3">
+                    <div class="card p-3 rounded-xl text-center">
+                        <div class="text-xs text-red-400 font-bold mb-2">RED</div>
+                        <div class="flex items-center justify-between">
+                            <button onclick="adjustCount('red', -1)" class="w-8 h-8 rounded-lg bg-dark">-</button>
+                            <span id="count-red" class="font-bold text-xl">0</span>
+                            <button onclick="adjustCount('red', 1)" class="w-8 h-8 rounded-lg bg-dark">+</button>
+                        </div>
+                    </div>
+                    <div class="card p-3 rounded-xl text-center">
+                        <div class="text-xs text-yellow-400 font-bold mb-2">YELLOW</div>
+                        <div class="flex items-center justify-between">
+                            <button onclick="adjustCount('yellow', -1)" class="w-8 h-8 rounded-lg bg-dark">-</button>
+                            <span id="count-yellow" class="font-bold text-xl">0</span>
+                            <button onclick="adjustCount('yellow', 1)" class="w-8 h-8 rounded-lg bg-dark">+</button>
+                        </div>
+                    </div>
+                    <div class="card p-3 rounded-xl text-center">
+                        <div class="text-xs text-green-400 font-bold mb-2">GREEN</div>
+                        <div class="flex items-center justify-between">
+                            <button onclick="adjustCount('green', -1)" class="w-8 h-8 rounded-lg bg-dark">-</button>
+                            <span id="count-green" class="font-bold text-xl">0</span>
+                            <button onclick="adjustCount('green', 1)" class="w-8 h-8 rounded-lg bg-dark">+</button>
+                        </div>
+                    </div>
+                    <div class="card p-3 rounded-xl text-center">
+                        <div class="text-xs text-gray-400 font-bold mb-2">BLACK</div>
+                        <div class="flex items-center justify-between">
+                            <button onclick="adjustCount('black', -1)" class="w-8 h-8 rounded-lg bg-dark">-</button>
+                            <span id="count-black" class="font-bold text-xl">0</span>
+                            <button onclick="adjustCount('black', 1)" class="w-8 h-8 rounded-lg bg-dark">+</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- NOTES -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Scene Notes</label>
+                <textarea id="scene-notes" placeholder="Describe what you found on arrival..." rows="3" class="w-full px-4 py-3 rounded-xl resize-none"></textarea>
+            </section>
+
+            <button onclick="createIncident()" class="w-full btn-emergency py-4 rounded-xl font-bold text-lg mt-4">
+                CREATE CASE
+            </button>
+        </main>
+    </div>
+
+    <!-- INCIDENT DETAIL SCREEN -->
+    <div id="screen-incident" class="screen">
+        <header class="sticky top-0 z-50 bg-dark/95 backdrop-blur border-b border-dark-border px-4 py-4">
+            <div class="flex items-center gap-4">
+                <button onclick="showScreen('screen-home')" class="w-10 h-10 flex items-center justify-center rounded-xl bg-dark-card">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                </button>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight" id="case-detail-title">Case #492</h1>
+                    <div class="flex items-center gap-2 mt-0.5">
+                        <span class="text-xs text-emergency" id="case-status-text">ON SCENE</span>
+                        <span class="text-xs text-gray-500">•</span>
+                        <span class="text-xs text-gray-400" id="case-detail-time">14:32</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="p-4 space-y-4">
+            <!-- Case Status Timeline -->
+            <div class="card rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-xs font-bold text-gray-400 uppercase">Case Status Timeline</span>
+                    <button onclick="showStatusUpdateModal()" class="text-xs text-emergency font-medium flex items-center gap-1 bg-emergency/10 px-3 py-1.5 rounded-lg">
+                        UPDATE <span class="material-symbols-rounded text-sm">arrow_forward</span>
+                    </button>
+                </div>
+                
+                <!-- Timeline -->
+                <div class="relative pl-6" id="case-status-timeline">
+                    <div class="absolute left-[11px] top-2 bottom-2 w-0.5 bg-gray-700"></div>
+                    <!-- Timeline items will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Location Card -->
+            <div class="card rounded-2xl p-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="material-symbols-rounded text-emergency">location_on</span>
+                    <span class="text-xs font-bold text-gray-400 uppercase">Location</span>
+                </div>
+                <p class="font-bold text-lg" id="case-detail-location">5th Avenue & Main Street</p>
+                <p class="text-sm text-gray-400" id="case-detail-gps">GPS: 40.7589° N, 73.9851° W</p>
+            </div>
+
+            <!-- Scene Notes (if any) -->
+            <div class="card rounded-2xl p-4 hidden" id="case-detail-notes-card">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="material-symbols-rounded text-emergency">description</span>
+                    <span class="text-xs font-bold text-gray-400 uppercase">Scene Notes</span>
+                </div>
+                <p class="text-sm text-gray-300" id="case-detail-notes"></p>
+            </div>
+
+            <!-- Triage Summary -->
+            <div class="grid grid-cols-4 gap-2" id="case-detail-triage">
+                <div class="card p-3 rounded-xl text-center">
+                    <div class="text-2xl font-bold text-red-500" id="case-red-count">3</div>
+                    <div class="text-[10px] text-gray-400 uppercase">Red</div>
+                </div>
+                <div class="card p-3 rounded-xl text-center">
+                    <div class="text-2xl font-bold text-yellow-500" id="case-yellow-count">2</div>
+                    <div class="text-[10px] text-gray-400 uppercase">Yellow</div>
+                </div>
+                <div class="card p-3 rounded-xl text-center">
+                    <div class="text-2xl font-bold text-green-500" id="case-green-count">1</div>
+                    <div class="text-[10px] text-gray-400 uppercase">Green</div>
+                </div>
+                <div class="card p-3 rounded-xl text-center">
+                    <div class="text-2xl font-bold text-gray-500" id="case-black-count">0</div>
+                    <div class="text-[10px] text-gray-400 uppercase">Black</div>
+                </div>
+            </div>
+
+            <!-- ADD PATIENT BUTTON -->
+            <button onclick="showScreen('screen-new-patient')" class="w-full py-4 bg-white text-black rounded-xl font-bold flex items-center justify-center gap-2">
+                <span class="material-symbols-rounded">person_add</span>
+                ADD PATIENT
+            </button>
+
+            <!-- Patient List -->
+            <h3 class="font-bold text-sm text-gray-400 uppercase tracking-wider pt-2">Patients (<span id="patient-list-count">0</span>)</h3>
+            <div class="space-y-2" id="patient-list">
+                <!-- Patients will be dynamically added here -->
+            </div>
+            
+            <div class="card rounded-2xl p-8 text-center hidden" id="no-patients">
+                <span class="material-symbols-rounded text-4xl text-gray-600 mb-3">person_off</span>
+                <p class="text-gray-400">No patients logged yet</p>
+                <p class="text-sm text-gray-500 mt-1">Add patients to the case</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- NEW PATIENT SCREEN -->
+    <div id="screen-new-patient" class="screen">
+        <header class="sticky top-0 z-50 bg-dark/95 backdrop-blur border-b border-dark-border px-4 py-4">
+            <div class="flex items-center gap-4">
+                <button onclick="showScreen('screen-incident')" class="w-10 h-10 flex items-center justify-center rounded-xl bg-dark-card">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                </button>
+                <h1 class="font-bold text-lg">Add Patient</h1>
+            </div>
+        </header>
+
+        <main class="p-4 space-y-6">
+            <!-- TRIAGE LEVEL -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Triage Level *</label>
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="selectTriage('red')" class="triage-btn card p-4 rounded-xl text-center border-2 border-transparent" data-triage="red">
+                        <div class="w-8 h-8 bg-red-600 rounded-full mx-auto mb-2"></div>
+                        <div class="text-xs font-bold">RED</div>
+                    </button>
+                    <button onclick="selectTriage('yellow')" class="triage-btn card p-4 rounded-xl text-center border-2 border-transparent" data-triage="yellow">
+                        <div class="w-8 h-8 bg-yellow-500 rounded-full mx-auto mb-2"></div>
+                        <div class="text-xs font-bold">YELLOW</div>
+                    </button>
+                    <button onclick="selectTriage('green')" class="triage-btn card p-4 rounded-xl text-center border-2 border-transparent" data-triage="green">
+                        <div class="w-8 h-8 bg-green-600 rounded-full mx-auto mb-2"></div>
+                        <div class="text-xs font-bold">GREEN</div>
+                    </button>
+                    <button onclick="selectTriage('black')" class="triage-btn card p-4 rounded-xl text-center border-2 border-transparent" data-triage="black">
+                        <div class="w-8 h-8 bg-gray-700 rounded-full mx-auto mb-2"></div>
+                        <div class="text-xs font-bold">BLACK</div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- IDENTITY -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Patient Identity</label>
+                <div class="space-y-3">
+                    <input type="text" id="patient-name" placeholder="Full Name (or Unknown)" class="w-full px-4 py-4 rounded-xl">
+                    <div class="grid grid-cols-2 gap-3">
+                        <select id="patient-sex" class="w-full px-4 py-4 rounded-xl">
+                            <option value="">Sex</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                        </select>
+                        <input type="number" id="patient-age" placeholder="Age" class="w-full px-4 py-4 rounded-xl">
+                    </div>
+                </div>
+            </section>
+
+            <!-- CONDITION -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Primary Condition *</label>
+                <input type="text" id="patient-condition" placeholder="e.g., Head trauma, Chest pain, Fracture..." class="w-full px-4 py-4 rounded-xl">
+            </section>
+
+            <!-- FIELD OBSERVATIONS -->
+            <section>
+                <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Field Observations</label>
+                
+                <!-- Quick Tap Templates -->
+                <div class="flex flex-wrap gap-2 mb-3">
+                    <button onclick="addObservation('Conscious & Alert')" class="observation-tag bg-gray-800 hover:bg-gray-700 transition text-xs py-2 px-3 rounded-full border border-gray-700">Conscious & Alert</button>
+                    <button onclick="addObservation('Airway Clear')" class="observation-tag bg-gray-800 hover:bg-gray-700 transition text-xs py-2 px-3 rounded-full border border-gray-700">Airway Clear</button>
+                    <button onclick="addObservation('Breathing Normal')" class="observation-tag bg-gray-800 hover:bg-gray-700 transition text-xs py-2 px-3 rounded-full border border-gray-700">Breathing Normal</button>
+                    <button onclick="addObservation('Circulation Stable')" class="observation-tag bg-gray-800 hover:bg-gray-700 transition text-xs py-2 px-3 rounded-full border border-gray-700">Circulation Stable</button>
+                    <button onclick="addObservation('Responsive to Pain')" class="observation-tag bg-gray-800 hover:bg-gray-700 transition text-xs py-2 px-3 rounded-full border border-gray-700">Responsive to Pain</button>
+                    <button onclick="addObservation('Unresponsive')" class="observation-tag bg-red-900/50 hover:bg-red-900/70 transition text-xs py-2 px-3 rounded-full border border-red-800 text-red-300">Unresponsive</button>
+                    <button onclick="addObservation('Bleeding Controlled')" class="observation-tag bg-gray-800 hover:bg-gray-700 transition text-xs py-2 px-3 rounded-full border border-gray-700">Bleeding Controlled</button>
+                    <button onclick="addObservation('O2 Administered')" class="observation-tag bg-gray-800 hover:bg-gray-700 transition text-xs py-2 px-3 rounded-full border border-gray-700">O2 Administered</button>
+                </div>
+                
+                <!-- Textarea with Voice Button -->
+                <div class="relative">
+                    <textarea id="patient-observations" placeholder="What you observed on initial assessment... Tap tags above or use microphone" rows="5" class="w-full px-4 py-3 pr-14 rounded-xl resize-none"></textarea>
+                    <button onclick="toggleVoiceInput()" id="voice-btn" class="absolute right-3 bottom-3 w-10 h-10 bg-gray-700 hover:bg-emergency rounded-full flex items-center justify-center transition">
+                        <span class="material-symbols-rounded text-white text-lg" id="voice-icon">mic</span>
+                    </button>
+                </div>
+                <p id="voice-status" class="text-xs text-gray-500 mt-2 hidden">Listening...</p>
+            </section>
+
+            <button onclick="savePatient()" class="w-full btn-emergency py-4 rounded-xl font-bold text-lg">
+                SAVE PATIENT
+            </button>
+        </main>
+    </div>
+
+    <!-- PATIENT DETAIL SCREEN -->
+    <div id="screen-patient" class="screen">
+        <header class="sticky top-0 z-50 bg-dark/95 backdrop-blur border-b border-dark-border px-4 py-4">
+            <div class="flex items-center gap-4">
+                <button onclick="showScreen('screen-incident')" class="w-10 h-10 flex items-center justify-center rounded-xl bg-dark-card">
+                    <span class="material-symbols-rounded">arrow_back</span>
+                </button>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight" id="detail-patient-id">Patient #1</h1>
+                    <p class="text-xs text-gray-400" id="detail-patient-triage">RED</p>
+                </div>
+            </div>
+        </header>
+
+        <main class="p-4 space-y-4">
+            <!-- Patient Header -->
+            <div class="card rounded-2xl p-4">
+                <div class="flex items-start gap-4">
+                    <div class="w-16 h-16 rounded-2xl flex items-center justify-center" id="detail-patient-icon">
+                        <span class="material-symbols-rounded text-3xl text-white">person</span>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h2 class="font-bold text-xl" id="detail-patient-name">Unknown</h2>
+                            <span class="px-2 py-0.5 text-white text-xs font-bold rounded" id="detail-patient-tag">RED</span>
+                        </div>
+                        <p class="text-gray-400" id="detail-patient-demographics">Male • ~35 years</p>
+                        <p class="text-sm mt-2 font-medium" id="detail-patient-condition">Head trauma, unconscious</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Field Observations -->
+            <div class="card rounded-2xl p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="material-symbols-rounded text-emergency">visibility</span>
+                    <span class="text-xs font-bold text-gray-400 uppercase">Field Observations</span>
+                </div>
+                <div id="detail-observations-list" class="space-y-2 text-sm">
+                    <p class="text-gray-500 italic">No observations recorded</p>
+                </div>
+            </div>
+
+            <!-- Intervention Log -->
+            <div class="card rounded-2xl p-4">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-rounded text-emergency">history</span>
+                        <span class="text-xs font-bold text-gray-400 uppercase">Intervention Log</span>
+                    </div>
+                    <span class="text-xs text-gray-500" id="log-count">0 entries</span>
+                </div>
+                <div class="space-y-4 relative" id="intervention-log">
+                    <div class="absolute left-2 top-2 bottom-2 w-0.5 bg-dark-border"></div>
+                    <div class="relative pl-8" id="initial-log-entry">
+                        <div class="absolute left-0 top-1 w-4 h-4 bg-emergency rounded-full border-4 border-dark"></div>
+                        <div>
+                            <span class="text-xs text-emergency font-bold" id="detail-first-contact-time">14:32</span>
+                            <p class="text-sm font-medium">First contact / Initial assessment</p>
+                            <p class="text-xs text-gray-500">Patient logged to case</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="openAddLogModal()" class="w-full py-4 bg-white text-black rounded-xl font-bold flex items-center justify-center gap-2">
+                <span class="material-symbols-rounded">add</span>
+                ADD LOG ENTRY
+            </button>
+        </main>
+    </div>
+
+    <!-- ADD LOG ENTRY MODAL -->
+    <div id="modal-add-log" class="modal">
+        <div class="w-full bg-dark-card rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="font-bold text-xl">Add Log Entry</h2>
+                <button onclick="closeAddLogModal()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-dark">
+                    <span class="material-symbols-rounded">close</span>
+                </button>
+            </div>
+
+            <div class="space-y-6">
+                <!-- Intervention Type -->
+                <div>
+                    <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Intervention Type *</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button class="log-type-btn card p-3 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-type="Assessment">
+                            <span class="material-symbols-rounded text-lg mb-1 block">stethoscope</span>
+                            <span class="text-sm font-medium">Assessment</span>
+                        </button>
+                        <button class="log-type-btn card p-3 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-type="Treatment">
+                            <span class="material-symbols-rounded text-lg mb-1 block">medication</span>
+                            <span class="text-sm font-medium">Treatment</span>
+                        </button>
+                        <button class="log-type-btn card p-3 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-type="Medication">
+                            <span class="material-symbols-rounded text-lg mb-1 block">vaccines</span>
+                            <span class="text-sm font-medium">Medication</span>
+                        </button>
+                        <button class="log-type-btn card p-3 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-type="Procedure">
+                            <span class="material-symbols-rounded text-lg mb-1 block">surgical</span>
+                            <span class="text-sm font-medium">Procedure</span>
+                        </button>
+                        <button class="log-type-btn card p-3 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-type="Patient Moved">
+                            <span class="material-symbols-rounded text-lg mb-1 block">local_shipping</span>
+                            <span class="text-sm font-medium">Patient Moved</span>
+                        </button>
+                        <button class="log-type-btn card p-3 rounded-xl text-left border-2 border-transparent hover:border-emergency transition" data-type="Handover">
+                            <span class="material-symbols-rounded text-lg mb-1 block">transfer_within_a_station</span>
+                            <span class="text-sm font-medium">Handover</span>
+                        </button>
+                        <button class="log-type-btn card p-3 rounded-xl text-left border-2 border-transparent hover:border-emergency transition col-span-2" data-type="Note">
+                            <span class="material-symbols-rounded text-lg mb-1 block">notes</span>
+                            <span class="text-sm font-medium">General Note</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Description *</label>
+                    <textarea id="log-description" placeholder="Describe what was done..." rows="4" class="w-full px-4 py-3 rounded-xl resize-none"></textarea>
+                </div>
+
+                <!-- Timestamp -->
+                <div>
+                    <label class="text-xs font-bold text-emergency uppercase tracking-wider mb-3 block">Time</label>
+                    <input type="time" id="log-time" class="w-full px-4 py-4 rounded-xl">
+                </div>
+
+                <button onclick="saveLogEntry()" class="w-full btn-emergency py-4 rounded-xl font-bold text-lg">
+                    SAVE ENTRY
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BOTTOM NAVIGATION -->
+    <nav id="bottom-nav" class="fixed bottom-0 left-0 right-0 bg-dark-card border-t border-dark-border hidden">
+        <div class="flex justify-around items-stretch h-16">
+            <button onclick="showScreen('screen-home')" class="nav-item flex-1 flex flex-col items-center justify-center gap-1 text-gray-500 active" data-screen="screen-home">
+                <span class="material-symbols-rounded nav-icon text-2xl">medical_services</span>
+                <span class="text-[10px] font-medium">Active</span>
+            </button>
+            <button onclick="showScreen('screen-incident')" class="nav-item flex-1 flex flex-col items-center justify-center gap-1 text-gray-500" data-screen="screen-incident">
+                <span class="material-symbols-rounded nav-icon text-2xl">assignment</span>
+                <span class="text-[10px] font-medium">Case</span>
+            </button>
+            <button onclick="showScreen('screen-patient')" class="nav-item flex-1 flex flex-col items-center justify-center gap-1 text-gray-500" data-screen="screen-patient">
+                <span class="material-symbols-rounded nav-icon text-2xl">group</span>
+                <span class="text-[10px] font-medium">Patients</span>
+            </button>
+        </div>
+    </nav>
+
+    <script>
+        // Case Status Options
+        const CASE_STATUSES = ['ON SCENE', 'ASSESSING', 'TREATING', 'TRANSPORTING', 'HANDED OVER'];
+        const STATUS_ICONS = ['location_on', 'stethoscope', 'medication', 'local_shipping', 'check_circle'];
+        
+        // Data Storage
+        let currentCase = {
+            id: 492,
+            type: 'Vehicle Accident',
+            location: '5th Avenue & Main Street',
+            gps: '40.7589° N, 73.9851° W',
+            time: '14:32',
+            notes: '',
+            status: 2, // Current status index
+            statusLog: [
+                { status: 0, statusName: 'ON SCENE', timestamp: '14:32', note: 'Team arrived at scene' },
+                { status: 1, statusName: 'ASSESSING', timestamp: '14:38', note: 'All patients triaged' },
+                { status: 2, statusName: 'TREATING', timestamp: '14:45', note: 'Interventions in progress' }
+            ],
+            casualties: { red: 3, yellow: 2, green: 1, black: 0 },
+            patients: [
+                { id: 1, name: 'Unknown', sex: 'Male', age: 35, triage: 'red', condition: 'Head trauma, unconscious', observations: ['Unconscious but breathing', 'Visible head wound, bleeding controlled', 'Airway secured, O2 administered'], logs: [] },
+                { id: 2, name: 'Unknown', sex: 'Female', age: 28, triage: 'red', condition: 'Chest pain, difficulty breathing', observations: ['Conscious, distressed', 'Labored breathing', 'O2 administered'], logs: [] },
+                { id: 3, name: 'Unknown', sex: 'Male', age: 45, triage: 'yellow', condition: 'Arm fracture', observations: ['Conscious, alert', 'Right arm deformity', 'Splint applied'], logs: [] }
+            ]
+        };
+        let currentPatientId = null;
+        let selectedTriage = null;
+        let selectedLogType = null;
+        let selectedSituation = null;
+
+        // Screen Navigation
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.querySelector(`.nav-item[data-screen="${screenId}"]`)?.classList.add('active');
+            
+            const hideNavScreens = ['screen-login', 'screen-new-incident', 'screen-new-patient'];
+            const bottomNav = document.getElementById('bottom-nav');
+            if (hideNavScreens.includes(screenId)) {
+                bottomNav.classList.add('hidden');
+            } else {
+                bottomNav.classList.remove('hidden');
+            }
+
+            // Refresh data when showing screens
+            if (screenId === 'screen-incident') refreshCaseDetail();
+            if (screenId === 'screen-patient' && currentPatientId) refreshPatientDetail();
+        }
+
+        // Situation Selection
+        document.querySelectorAll('.situation-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.situation-btn').forEach(b => b.classList.remove('border-emergency'));
+                this.classList.add('border-emergency');
+                selectedSituation = this.dataset.value;
+            });
+        });
+
+        // Triage Selection
+        function selectTriage(level) {
+            selectedTriage = level;
+            document.querySelectorAll('.triage-btn').forEach(btn => {
+                btn.classList.remove('border-red-600', 'border-yellow-500', 'border-green-600', 'border-gray-500');
+            });
+            const colorMap = { red: 'border-red-600', yellow: 'border-yellow-500', green: 'border-green-600', black: 'border-gray-500' };
+            document.querySelector(`.triage-btn[data-triage="${level}"]`).classList.add(colorMap[level]);
+        }
+
+        // Log Type Selection
+        document.querySelectorAll('.log-type-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.log-type-btn').forEach(b => b.classList.remove('border-emergency'));
+                this.classList.add('border-emergency');
+                selectedLogType = this.dataset.type;
+            });
+        });
+
+        // Casualty Counter
+        const counts = { red: 0, yellow: 0, green: 0, black: 0 };
+        function adjustCount(type, delta) {
+            counts[type] = Math.max(0, counts[type] + delta);
+            document.getElementById(`count-${type}`).textContent = counts[type];
+        }
+
+        // Geolocation
+        function getLocation() {
+            const statusEl = document.getElementById('location-status');
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = 'Getting location...';
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        document.getElementById('location-input').value = 
+                            `${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`;
+                        statusEl.textContent = 'Location captured';
+                        setTimeout(() => statusEl.classList.add('hidden'), 2000);
+                    },
+                    () => { statusEl.textContent = 'Location unavailable'; }
+                );
+            } else { statusEl.textContent = 'GPS not supported'; }
+        }
+
+        // Create Incident
+        function createIncident() {
+            if (!selectedSituation) { alert('Please select situation type'); return; }
+            const location = document.getElementById('location-input').value;
+            if (!location) { alert('Please enter location'); return; }
+            
+            // Update current case
+            currentCase.type = selectedSituation;
+            currentCase.location = location;
+            currentCase.notes = document.getElementById('scene-notes').value;
+            currentCase.casualties = { ...counts };
+            currentCase.time = new Date().toTimeString().slice(0,5);
+            currentCase.patients = [];
+            
+            // Reset form
+            document.querySelectorAll('.situation-btn').forEach(b => b.classList.remove('border-emergency'));
+            document.getElementById('location-input').value = '';
+            document.getElementById('scene-notes').value = '';
+            Object.keys(counts).forEach(k => counts[k] = 0);
+            ['red','yellow','green','black'].forEach(c => document.getElementById(`count-${c}`).textContent = '0');
+            selectedSituation = null;
+            
+            // Update home screen
+            document.getElementById('active-case-title').textContent = currentCase.type;
+            document.getElementById('active-case-location').textContent = currentCase.location;
+            document.getElementById('active-case-time').textContent = currentCase.time;
+            if (currentCase.statusLog.length > 0) {
+                const current = currentCase.statusLog[currentCase.statusLog.length - 1];
+                document.getElementById('active-case-status').textContent = current.statusName;
+                document.getElementById('active-case-status-time').textContent = 'Updated ' + current.timestamp;
+            }
+            updateTriageDisplay('active-case-triage', currentCase.casualties);
+            
+            refreshCaseDetail();
+            showScreen('screen-incident');
+        }
+
+        // Refresh Case Detail Screen
+        function refreshCaseDetail() {
+            document.getElementById('case-detail-title').textContent = `Case #${currentCase.id}`;
+            document.getElementById('case-detail-time').textContent = currentCase.time;
+            document.getElementById('case-detail-location').textContent = currentCase.location;
+            
+            // Notes
+            const notesCard = document.getElementById('case-detail-notes-card');
+            if (currentCase.notes) {
+                notesCard.classList.remove('hidden');
+                document.getElementById('case-detail-notes').textContent = currentCase.notes;
+            } else {
+                notesCard.classList.add('hidden');
+            }
+            
+            // Triage counts
+            ['red','yellow','green','black'].forEach(c => {
+                document.getElementById(`case-${c}-count`).textContent = currentCase.casualties[c];
+            });
+            
+            // Patient list
+            document.getElementById('patient-list-count').textContent = currentCase.patients.length;
+            const listEl = document.getElementById('patient-list');
+            const noPatientsEl = document.getElementById('no-patients');
+            
+            if (currentCase.patients.length === 0) {
+                listEl.innerHTML = '';
+                noPatientsEl.classList.remove('hidden');
+            } else {
+                noPatientsEl.classList.add('hidden');
+                listEl.innerHTML = currentCase.patients.map(p => `
+                    <div onclick="viewPatient(${p.id})" class="card rounded-xl p-4 flex items-center gap-4 cursor-pointer active:scale-[0.99] transition">
+                        <div class="w-12 h-12 ${getTriageBg(p.triage)} rounded-full flex items-center justify-center">
+                            <span class="font-bold ${getTriageText(p.triage)}">${p.triage.charAt(0).toUpperCase()}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <h4 class="font-bold">${p.name || 'Unknown'}</h4>
+                                <span class="px-1.5 py-0.5 ${getTriageBadgeBg(p.triage)} ${getTriageBadgeText(p.triage)} text-[10px] font-bold rounded uppercase">${p.triage}</span>
+                            </div>
+                            <p class="text-sm text-gray-400">${p.sex || '?'} • ~${p.age || '?'}y • ${p.condition}</p>
+                        </div>
+                        <span class="material-symbols-rounded text-gray-500">chevron_right</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // Helper functions for triage colors
+        function getTriageBg(triage) {
+            const map = { red: 'bg-red-900/50', yellow: 'bg-yellow-900/50', green: 'bg-green-900/50', black: 'bg-gray-800' };
+            return map[triage] || 'bg-gray-800';
+        }
+        function getTriageText(triage) {
+            const map = { red: 'text-red-400', yellow: 'text-yellow-400', green: 'text-green-400', black: 'text-gray-400' };
+            return map[triage] || 'text-gray-400';
+        }
+        function getTriageBadgeBg(triage) {
+            const map = { red: 'bg-red-900', yellow: 'bg-yellow-900', green: 'bg-green-900', black: 'bg-gray-700' };
+            return map[triage] || 'bg-gray-700';
+        }
+        function getTriageBadgeText(triage) {
+            const map = { red: 'text-red-300', yellow: 'text-yellow-300', green: 'text-green-300', black: 'text-gray-300' };
+            return map[triage] || 'text-gray-300';
+        }
+        function getTriageColor(triage) {
+            const map = { red: '#dc2626', yellow: '#f59e0b', green: '#16a34a', black: '#6b7280' };
+            return map[triage] || '#6b7280';
+        }
+
+        // Update triage display helper
+        function updateTriageDisplay(elementId, casualties) {
+            const el = document.getElementById(elementId);
+            el.innerHTML = `
+                ${casualties.red > 0 ? `<span class="px-2 py-1 bg-red-900/50 text-red-300 text-xs font-bold rounded">${casualties.red} RED</span>` : ''}
+                ${casualties.yellow > 0 ? `<span class="px-2 py-1 bg-yellow-900/50 text-yellow-300 text-xs font-bold rounded">${casualties.yellow} YELLOW</span>` : ''}
+                ${casualties.green > 0 ? `<span class="px-2 py-1 bg-green-900/50 text-green-300 text-xs font-bold rounded">${casualties.green} GREEN</span>` : ''}
+                ${casualties.black > 0 ? `<span class="px-2 py-1 bg-gray-800 text-gray-300 text-xs font-bold rounded">${casualties.black} BLACK</span>` : ''}
+            `;
+        }
+
+        // View Patient
+        function viewPatient(patientId) {
+            currentPatientId = patientId;
+            refreshPatientDetail();
+            showScreen('screen-patient');
+        }
+
+        // Refresh Patient Detail
+        function refreshPatientDetail() {
+            const patient = currentCase.patients.find(p => p.id === currentPatientId);
+            if (!patient) return;
+            
+            document.getElementById('detail-patient-id').textContent = `Patient #${patient.id}`;
+            document.getElementById('detail-patient-triage').textContent = patient.triage.toUpperCase();
+            document.getElementById('detail-patient-name').textContent = patient.name || 'Unknown';
+            document.getElementById('detail-patient-demographics').textContent = 
+                `${patient.sex || '?'} • ~${patient.age || '?'} years`;
+            document.getElementById('detail-patient-condition').textContent = patient.condition;
+            document.getElementById('detail-patient-condition').style.color = getTriageColor(patient.triage);
+            
+            // Tag color
+            const tagEl = document.getElementById('detail-patient-tag');
+            tagEl.textContent = patient.triage.toUpperCase();
+            tagEl.style.backgroundColor = getTriageColor(patient.triage);
+            
+            // Icon background
+            document.getElementById('detail-patient-icon').style.backgroundColor = getTriageColor(patient.triage);
+            
+            // Observations
+            const obsEl = document.getElementById('detail-observations-list');
+            if (patient.observations && patient.observations.length > 0) {
+                obsEl.innerHTML = patient.observations.map(obs => `
+                    <div class="flex items-start gap-2">
+                        <span class="material-symbols-rounded text-emergency text-sm">check_circle</span>
+                        <span>${obs}</span>
+                    </div>
+                `).join('');
+            } else {
+                obsEl.innerHTML = '<p class="text-gray-500 italic">No observations recorded</p>';
+            }
+            
+            // Log entries
+            const logEl = document.getElementById('intervention-log');
+            const initialTime = document.getElementById('detail-first-contact-time');
+            initialTime.textContent = currentCase.time;
+            
+            // Add additional log entries
+            if (patient.logs && patient.logs.length > 0) {
+                const extraLogs = patient.logs.map(log => `
+                    <div class="relative pl-8">
+                        <div class="absolute left-0 top-1 w-4 h-4 bg-emergency rounded-full border-4 border-dark"></div>
+                        <div>
+                            <span class="text-xs text-emergency font-bold">${log.time}</span>
+                            <p class="text-sm font-medium">${log.type}</p>
+                            <p class="text-xs text-gray-500">${log.description}</p>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // Insert after initial entry
+                const initialEntry = document.getElementById('initial-log-entry');
+                initialEntry.insertAdjacentHTML('afterend', extraLogs);
+            }
+            
+            document.getElementById('log-count').textContent = `${(patient.logs || []).length + 1} entries`;
+        }
+
+        // Save Patient
+        function savePatient() {
+            if (!selectedTriage) { alert('Please select triage level'); return; }
+            
+            const name = document.getElementById('patient-name').value;
+            const condition = document.getElementById('patient-condition').value;
+            if (!condition) { alert('Please enter primary condition'); return; }
+            
+            // Parse observations from textarea (split by newlines)
+            const obsText = document.getElementById('patient-observations').value;
+            const observations = obsText.split('\n').filter(line => line.trim() !== '');
+            
+            const newPatient = {
+                id: currentCase.patients.length + 1,
+                name: name || 'Unknown',
+                sex: document.getElementById('patient-sex').value,
+                age: document.getElementById('patient-age').value,
+                triage: selectedTriage,
+                condition: condition,
+                observations: observations.length > 0 ? observations : [],
+                logs: []
+            };
+            
+            currentCase.patients.push(newPatient);
+            
+            // Reset form
+            document.getElementById('patient-name').value = '';
+            document.getElementById('patient-sex').value = '';
+            document.getElementById('patient-age').value = '';
+            document.getElementById('patient-condition').value = '';
+            document.getElementById('patient-observations').value = '';
+            document.querySelectorAll('.triage-btn').forEach(b => b.classList.remove('border-red-600', 'border-yellow-500', 'border-green-600', 'border-gray-500'));
+            selectedTriage = null;
+            
+            showScreen('screen-incident');
+        }
+
+        // Add Log Entry Modal
+        function openAddLogModal() {
+            document.getElementById('modal-add-log').classList.add('active');
+            document.getElementById('log-time').value = new Date().toTimeString().slice(0,5);
+            document.getElementById('log-description').value = '';
+            document.querySelectorAll('.log-type-btn').forEach(b => b.classList.remove('border-emergency'));
+            selectedLogType = null;
+        }
+        function closeAddLogModal() {
+            document.getElementById('modal-add-log').classList.remove('active');
+        }
+        function saveLogEntry() {
+            if (!selectedLogType) { alert('Please select intervention type'); return; }
+            const description = document.getElementById('log-description').value;
+            if (!description) { alert('Please enter description'); return; }
+            
+            const patient = currentCase.patients.find(p => p.id === currentPatientId);
+            if (patient) {
+                if (!patient.logs) patient.logs = [];
+                patient.logs.push({
+                    type: selectedLogType,
+                    description: description,
+                    time: document.getElementById('log-time').value
+                });
+            }
+            
+            closeAddLogModal();
+            refreshPatientDetail();
+        }
+
+        // Case Status Timeline Functions
+        function renderCaseStatusTimeline() {
+            const timelineEl = document.getElementById('case-status-timeline');
+            const lineEl = timelineEl.querySelector('.absolute');
+            
+            // Clear existing items (keep the line)
+            timelineEl.innerHTML = '';
+            timelineEl.appendChild(lineEl);
+            
+            // Render each status log entry
+            currentCase.statusLog.forEach((log, index) => {
+                const isCurrent = index === currentCase.statusLog.length - 1;
+                const isPast = index < currentCase.statusLog.length - 1;
+                
+                const entry = document.createElement('div');
+                entry.className = 'relative mb-4 last:mb-0';
+                entry.innerHTML = `
+                    <div class="absolute -left-[13px] top-0.5 w-5 h-5 rounded-full flex items-center justify-center ${isCurrent ? 'bg-emergency border-2 border-emergency' : 'bg-gray-700 border-2 border-gray-600'}">
+                        <span class="material-symbols-rounded text-[10px] ${isCurrent || isPast ? 'text-white' : 'text-gray-400'}">${STATUS_ICONS[log.status]}</span>
+                    </div>
+                    <div class="pl-4">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold ${isCurrent ? 'text-emergency' : 'text-gray-400'}">${log.timestamp}</span>
+                            ${isCurrent ? '<span class="px-1.5 py-0.5 bg-emergency/20 text-emergency text-[10px] font-bold rounded">CURRENT</span>' : ''}
+                        </div>
+                        <p class="font-bold text-sm ${isCurrent ? 'text-white' : 'text-gray-400'}">${log.statusName}</p>
+                        ${log.note ? `<p class="text-xs text-gray-500 mt-0.5">${log.note}</p>` : ''}
+                    </div>
+                `;
+                timelineEl.appendChild(entry);
+            });
+            
+            // Show upcoming statuses (grayed out)
+            const nextStatusIndex = currentCase.status + 1;
+            if (nextStatusIndex < CASE_STATUSES.length) {
+                for (let i = nextStatusIndex; i < CASE_STATUSES.length; i++) {
+                    const upcoming = document.createElement('div');
+                    upcoming.className = 'relative mb-4 last:mb-0 opacity-40';
+                    upcoming.innerHTML = `
+                        <div class="absolute -left-[13px] top-0.5 w-5 h-5 rounded-full bg-gray-800 border-2 border-gray-700 flex items-center justify-center">
+                            <span class="material-symbols-rounded text-[10px] text-gray-600">${STATUS_ICONS[i]}</span>
+                        </div>
+                        <div class="pl-4">
+                            <p class="font-bold text-sm text-gray-600">${CASE_STATUSES[i]}</p>
+                            <p class="text-xs text-gray-700 mt-0.5">Pending</p>
+                        </div>
+                    `;
+                    timelineEl.appendChild(upcoming);
+                }
+            }
+        }
+        
+        function showStatusUpdateModal() {
+            const nextIndex = currentCase.status + 1;
+            if (nextIndex >= CASE_STATUSES.length) {
+                alert('Case is already at final status');
+                return;
+            }
+            
+            const note = prompt(`Add note for ${CASE_STATUSES[nextIndex]} status (optional):`);
+            if (note !== null) { // User didn't cancel
+                addStatusUpdate(nextIndex, note);
+            }
+        }
+        
+        function addStatusUpdate(statusIndex, note = '') {
+            const now = new Date();
+            const timeStr = now.toTimeString().slice(0, 5);
+            
+            currentCase.status = statusIndex;
+            currentCase.statusLog.push({
+                status: statusIndex,
+                statusName: CASE_STATUSES[statusIndex],
+                timestamp: timeStr,
+                note: note
+            });
+            
+            // Update displays
+            renderCaseStatusTimeline();
+            document.getElementById('case-status-text').textContent = CASE_STATUSES[statusIndex];
+            
+            // Update home screen status
+            document.getElementById('active-case-status').textContent = CASE_STATUSES[statusIndex];
+            document.getElementById('active-case-status-time').textContent = 'Updated ' + timeStr;
+        }
+        
+        // Legacy functions (kept for compatibility)
+        function setStatus(statusIndex) {
+            addStatusUpdate(statusIndex);
+        }
+        
+        function nextStatus() {
+            showStatusUpdateModal();
+        }
+        
+        function updateStatusDisplay() {
+            renderCaseStatusTimeline();
+            if (currentCase.statusLog.length > 0) {
+                const current = currentCase.statusLog[currentCase.statusLog.length - 1];
+                document.getElementById('case-status-text').textContent = current.statusName;
+            }
+        }
+        
+        // Close Case
+        function closeCase() {
+            if (confirm('Close this case? It will be archived and removed from active cases.')) {
+                alert('Case closed and archived.');
+                // Reset to empty state
+                currentCase = {
+                    id: currentCase.id + 1,
+                    type: '',
+                    location: '',
+                    gps: '',
+                    time: '',
+                    notes: '',
+                    status: 0,
+                    casualties: { red: 0, yellow: 0, green: 0, black: 0 },
+                    patients: []
+                };
+                
+                // Show "no active case" state
+                document.getElementById('active-case-card').classList.add('hidden');
+                document.getElementById('no-active-case').classList.remove('hidden');
+            }
+        }
+
+        // Sync Status Simulation
+        function updateSyncStatus() {
+            const indicator = document.getElementById('sync-indicator');
+            const text = document.getElementById('sync-text');
+            
+            // Simulate occasional offline/online
+            if (Math.random() > 0.9) {
+                indicator.classList.remove('bg-green-500');
+                indicator.classList.add('bg-yellow-500');
+                text.textContent = 'Syncing...';
+                text.classList.remove('text-green-500');
+                text.classList.add('text-yellow-500');
+                
+                setTimeout(() => {
+                    indicator.classList.add('bg-green-500');
+                    indicator.classList.remove('bg-yellow-500');
+                    text.textContent = 'Live';
+                    text.classList.add('text-green-500');
+                    text.classList.remove('text-yellow-500');
+                }, 2000);
+            }
+        }
+        
+        // Quick Observation Templates
+        function addObservation(text) {
+            const textarea = document.getElementById('patient-observations');
+            const current = textarea.value.trim();
+            if (current) {
+                textarea.value = current + '\n- ' + text;
+            } else {
+                textarea.value = '- ' + text;
+            }
+            textarea.focus();
+        }
+
+        // Voice-to-Text using Web Speech API
+        let recognition = null;
+        let isRecording = false;
+
+        function initVoiceRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = 'en-US';
+
+                recognition.onresult = (event) => {
+                    const textarea = document.getElementById('patient-observations');
+                    let finalTranscript = '';
+                    let interimTranscript = '';
+
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript;
+                        if (event.results[i].isFinal) {
+                            finalTranscript += transcript;
+                        } else {
+                            interimTranscript += transcript;
+                        }
+                    }
+
+                    if (finalTranscript) {
+                        const current = textarea.value.trim();
+                        if (current) {
+                            textarea.value = current + ' ' + finalTranscript;
+                        } else {
+                            textarea.value = finalTranscript;
+                        }
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Voice recognition error:', event.error);
+                    stopVoiceInput();
+                };
+
+                recognition.onend = () => {
+                    if (isRecording) {
+                        recognition.start(); // Restart if still recording
+                    }
+                };
+            }
+        }
+
+        function toggleVoiceInput() {
+            if (!recognition) {
+                initVoiceRecognition();
+            }
+
+            const btn = document.getElementById('voice-btn');
+            const icon = document.getElementById('voice-icon');
+            const status = document.getElementById('voice-status');
+
+            if (!recognition) {
+                alert('Voice recognition not supported in this browser');
+                return;
+            }
+
+            if (isRecording) {
+                stopVoiceInput();
+            } else {
+                startVoiceInput();
+            }
+        }
+
+        function startVoiceInput() {
+            const btn = document.getElementById('voice-btn');
+            const icon = document.getElementById('voice-icon');
+            const status = document.getElementById('voice-status');
+
+            isRecording = true;
+            btn.classList.add('bg-emergency', 'animate-pulse');
+            btn.classList.remove('bg-gray-700');
+            icon.textContent = 'stop_circle';
+            status.classList.remove('hidden');
+            status.textContent = 'Listening... Speak now';
+
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error('Failed to start recognition:', e);
+            }
+        }
+
+        function stopVoiceInput() {
+            const btn = document.getElementById('voice-btn');
+            const icon = document.getElementById('voice-icon');
+            const status = document.getElementById('voice-status');
+
+            isRecording = false;
+            btn.classList.remove('bg-emergency', 'animate-pulse');
+            btn.classList.add('bg-gray-700');
+            icon.textContent = 'mic';
+            status.classList.add('hidden');
+
+            if (recognition) {
+                recognition.stop();
+            }
+        }
+
+        // PWA Service Worker Registration
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then((registration) => {
+                    console.log('[PWA] SW registered:', registration);
+                })
+                .catch((error) => {
+                    console.log('[PWA] SW registration failed:', error);
+                });
+        }
+
+        // PWA Install Prompt
+        let deferredPrompt;
+        const installBtn = document.getElementById('install-btn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.classList.remove('hidden');
+            console.log('[PWA] Install prompt available');
+        });
+
+        window.addEventListener('appinstalled', () => {
+            console.log('[PWA] App installed');
+            installBtn.classList.add('hidden');
+            deferredPrompt = null;
+        });
+
+        function installPWA() {
+            if (!deferredPrompt) return;
+            deferredPrompt.prompt();
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('[PWA] User accepted install');
+                } else {
+                    console.log('[PWA] User dismissed install');
+                }
+                deferredPrompt = null;
+                installBtn.classList.add('hidden');
+            });
+        }
+
+        // Online/Offline Detection
+        function updateOnlineStatus() {
+            const indicator = document.getElementById('sync-indicator');
+            const text = document.getElementById('sync-text');
+            
+            if (navigator.onLine) {
+                indicator.classList.remove('bg-red-500', 'bg-gray-500');
+                indicator.classList.add('bg-green-500');
+                text.textContent = 'Live';
+                text.classList.remove('text-red-500', 'text-gray-500');
+                text.classList.add('text-green-500');
+            } else {
+                indicator.classList.remove('bg-green-500');
+                indicator.classList.add('bg-red-500');
+                text.textContent = 'Offline';
+                text.classList.remove('text-green-500');
+                text.classList.add('text-red-500');
+                
+                // Show offline banner
+                showOfflineBanner();
+            }
+        }
+
+        function showOfflineBanner() {
+            // Check if banner already exists
+            if (document.getElementById('offline-banner')) return;
+            
+            const banner = document.createElement('div');
+            banner.id = 'offline-banner';
+            banner.className = 'fixed top-0 left-0 right-0 bg-red-600 text-white text-center py-2 text-sm font-medium z-[100]';
+            banner.innerHTML = '<span class="material-symbols-rounded text-sm align-middle mr-1">wifi_off</span> You are offline. Data will sync when connection is restored.';
+            document.body.appendChild(banner);
+            
+            // Adjust header position
+            document.querySelectorAll('header').forEach(h => {
+                h.style.marginTop = '36px';
+            });
+        }
+
+        function hideOfflineBanner() {
+            const banner = document.getElementById('offline-banner');
+            if (banner) {
+                banner.remove();
+                document.querySelectorAll('header').forEach(h => {
+                    h.style.marginTop = '';
+                });
+            }
+        }
+
+        window.addEventListener('online', () => {
+            updateOnlineStatus();
+            hideOfflineBanner();
+            // Trigger background sync
+            if ('serviceWorker' in navigator && 'SyncManager' in window) {
+                navigator.serviceWorker.ready.then((registration) => {
+                    registration.sync.register('sync-data');
+                });
+            }
+        });
+
+        window.addEventListener('offline', updateOnlineStatus);
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshCaseDetail();
+            renderCaseStatusTimeline();
+            if (currentCase.statusLog.length > 0) {
+                const current = currentCase.statusLog[currentCase.statusLog.length - 1];
+                document.getElementById('case-status-text').textContent = current.statusName;
+            }
+            setInterval(updateSyncStatus, 10000);
+            initVoiceRecognition();
+            updateOnlineStatus();
+        });
+    </script>
+</body>
+</html>

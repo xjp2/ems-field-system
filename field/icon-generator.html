@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; }
+    .icon-container { display: inline-block; margin: 10px; text-align: center; }
+    canvas { border: 1px solid #333; background: #0f0f0f; }
+    button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>MedResponse Icon Generator</h1>
+  <p>Click each button to download the icon:</p>
+  
+  <div id="icons"></div>
+
+  <script>
+    const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+    
+    function drawIcon(size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      
+      // Background - dark with gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#dc2626');
+      gradient.addColorStop(1, '#991b1b');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, size, size);
+      
+      // Rounded corners effect
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, size * 0.2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+      
+      // Medical cross
+      ctx.fillStyle = 'white';
+      const crossSize = size * 0.5;
+      const crossThickness = size * 0.15;
+      const centerX = size / 2;
+      const centerY = size / 2;
+      
+      // Vertical bar
+      ctx.fillRect(centerX - crossThickness/2, centerY - crossSize/2, crossThickness, crossSize);
+      // Horizontal bar
+      ctx.fillRect(centerX - crossSize/2, centerY - crossThickness/2, crossSize, crossThickness);
+      
+      return canvas;
+    }
+    
+    function downloadIcon(size) {
+      const canvas = drawIcon(size);
+      const link = document.createElement('a');
+      link.download = `icon-${size}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+    
+    const container = document.getElementById('icons');
+    sizes.forEach(size => {
+      const div = document.createElement('div');
+      div.className = 'icon-container';
+      
+      const canvas = drawIcon(size);
+      canvas.style.width = '100px';
+      canvas.style.height = '100px';
+      
+      const btn = document.createElement('button');
+      btn.textContent = `Download ${size}x${size}`;
+      btn.onclick = () => downloadIcon(size);
+      
+      const label = document.createElement('p');
+      label.textContent = `${size}x${size}`;
+      
+      div.appendChild(canvas);
+      div.appendChild(label);
+      div.appendChild(btn);
+      container.appendChild(div);
+    });
+  </script>
+</body>
+</html>

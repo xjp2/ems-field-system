@@ -1,0 +1,244 @@
+import NetInfo from '@react-native-community/netinfo';
+import { api, endpoints } from '../config/api';
+import { 
+  getPendingSyncOperations, 
+  completeSyncOperation, 
+  markSyncError 
+} from '../database/sync-queue';
+import { 
+  updateIncidentServerId, 
+  markIncidentSynced,
+  getIncidentServerId,
+} from '../database/incidents-db';
+import { markPatientSynced } from '../database/patients-db';
+import { SyncResult, SyncQueueEntry } from '../types/database';
+
+const MAX_RETRIES = 5;
+
+/**
+ * Main sync function - processes pending operations
+ */
+export async function syncWithServer(): Promise<SyncResult> {
+  const result: SyncResult = {
+    success: true,
+    operations_completed: 0,
+    operations_failed: 0,
+    errors: [],
+  };
+  
+  // Check network
+  const netInfo = await NetInfo.fetch();
+  if (!netInfo.isConnected) {
+    result.success = false;
+    result.errors.push('No network connection');
+    return result;
+  }
+  
+  // Get pending operations
+  const operations = await getPendingSyncOperations(MAX_RETRIES);
+  
+  if (operations.length === 0) {
+    return result;
+  }
+  
+  console.log(`Processing ${operations.length} sync operations...`);
+  
+  // Sort operations: incidents first, then patients, vitals, interventions
+  // This ensures parent records sync before children
+  const sortedOperations = operations.sort((a, b) => {
+    const order = { incidents: 0, patients: 1, vitals: 2, interventions: 3 };
+    return (order[a.table_name as keyof typeof order] || 99) - 
+           (order[b.table_name as keyof typeof order] || 99);
+  });
+  
+  // Process each operation
+  for (const operation of sortedOperations) {
+    try {
+      console.log(`Syncing: ${operation.table_name} ${operation.operation} ${operation.local_id}`);
+      await processOperation(operation);
+      result.operations_completed++;
+      console.log(`✓ Synced: ${operation.table_name} ${operation.local_id}`);
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.message || error.message || 'Unknown error';
+      
+      // Check if this is a "dependency not ready" error (incident not synced yet)
+      if (errorMsg.includes('not yet synced to server')) {
+        console.log(`⏳ Skipping ${operation.table_name} ${operation.local_id}: ${errorMsg}`);
+        // Don't mark as error - it will retry next sync
+        continue;
+      }
+      
+      result.operations_failed++;
+      console.error(`✗ Sync failed: ${operation.table_name} ${operation.local_id} - ${errorMsg}`);
+      console.error('Full error:', error);
+      result.errors.push(`${operation.table_name}:${operation.operation} - ${errorMsg}`);
+      await markSyncError(operation.id, errorMsg);
+    }
+  }
+  
+  result.success = result.operations_failed === 0;
+  return result;
+}
+
+/**
+ * Process a single sync operation
+ */
+async function processOperation(operation: SyncQueueEntry): Promise<void> {
+  const payload = JSON.parse(operation.payload);
+  
+  switch (operation.table_name) {
+    case 'incidents':
+      await syncIncident(operation, payload);
+      break;
+    case 'patients':
+      await syncPatient(operation, payload);
+      break;
+    case 'vitals':
+      await syncVital(operation, payload);
+      break;
+    case 'interventions':
+      await syncIntervention(operation, payload);
+      break;
+    default:
+      throw new Error(`Unknown table: ${operation.table_name}`);
+  }
+  
+  // Mark as completed
+  await completeSyncOperation(operation.id);
+}
+
+/**
+ * Sync incident to server
+ */
+async function syncIncident(
+  operation: SyncQueueEntry,
+  payload: any
+): Promise<void> {
+  switch (operation.operation) {
+    case 'CREATE':
+      const { data: created } = await api.post(
+        endpoints.incidents.create(),
+        payload
+      );
+      await updateIncidentServerId(operation.local_id, created.id);
+      break;
+      
+    case 'UPDATE':
+      if (!operation.server_id) {
+        throw new Error('Cannot update: no server_id');
+      }
+      await api.patch(endpoints.incidents.update(operation.server_id), payload);
+      await markIncidentSynced(operation.local_id, operation.server_id);
+      break;
+      
+    case 'DELETE':
+      if (operation.server_id) {
+        await api.delete(endpoints.incidents.get(operation.server_id));
+      }
+      break;
+  }
+}
+
+/**
+ * Sync patient to server
+ */
+async function syncPatient(
+  operation: SyncQueueEntry,
+  payload: any
+): Promise<void> {
+  console.log('Syncing patient:', { 
+    local_id: operation.local_id, 
+    incident_id: payload.incident_id,
+    has_incident_id: !!payload.incident_id 
+  });
+  
+  switch (operation.operation) {
+    case 'CREATE':
+      // Ensure incident_id is provided
+      if (!payload.incident_id) {
+        throw new Error('Patient sync failed: missing incident_id');
+      }
+      
+      // Look up the server_id for the incident
+      const serverIncidentId = await getIncidentServerId(payload.incident_id);
+      if (!serverIncidentId) {
+        throw new Error(`Incident ${payload.incident_id} not yet synced to server. Will retry after incident syncs.`);
+      }
+      
+      // Replace local incident_id with server incident_id
+      const patientPayload = {
+        ...payload,
+        incident_id: serverIncidentId,
+      };
+      
+      console.log('Creating patient with server incident_id:', serverIncidentId);
+      
+      const { data: created } = await api.post(
+        endpoints.patients.create(),
+        patientPayload
+      );
+      console.log('Patient created on server:', { 
+        server_id: created.id, 
+        incident_id: created.incident_id 
+      });
+      await markPatientSynced(
+        operation.local_id,
+        created.id,
+        created.incident_id
+      );
+      break;
+      
+    default:
+      console.warn(`Patient operation ${operation.operation} not implemented`);
+  }
+}
+
+/**
+ * Sync vital to server
+ */
+async function syncVital(
+  operation: SyncQueueEntry,
+  payload: any
+): Promise<void> {
+  if (operation.operation === 'CREATE') {
+    await api.post(endpoints.vitals.create(), payload);
+  }
+}
+
+/**
+ * Sync intervention to server
+ */
+async function syncIntervention(
+  operation: SyncQueueEntry,
+  payload: any
+): Promise<void> {
+  if (operation.operation === 'CREATE') {
+    await api.post(endpoints.interventions.create(), payload);
+  }
+}
+
+/**
+ * Check if there are pending sync operations
+ */
+export async function hasPendingSync(): Promise<boolean> {
+  const operations = await getPendingSyncOperations(MAX_RETRIES);
+  return operations.length > 0;
+}
+
+/**
+ * Get sync status for UI
+ */
+export async function getSyncStatus(): Promise<{
+  pending: number;
+  isOnline: boolean;
+}> {
+  const [operations, netInfo] = await Promise.all([
+    getPendingSyncOperations(MAX_RETRIES),
+    NetInfo.fetch(),
+  ]);
+  
+  return {
+    pending: operations.length,
+    isOnline: !!netInfo.isConnected,
+  };
+}
