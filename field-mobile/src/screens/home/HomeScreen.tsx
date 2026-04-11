@@ -27,10 +27,12 @@ export function HomeScreen() {
   const { sync, pendingCount, updateStatus } = useSyncStore();
 
   const loadData = useCallback(async () => {
+    console.log('HomeScreen: Loading data...');
     const [active, all] = await Promise.all([
       getActiveIncidents(),
       getAllIncidents(),
     ]);
+    console.log('HomeScreen: Loaded', active.length, 'active,', all.length, 'total incidents');
     setActiveIncidents(active);
     setRecentIncidents(all.slice(0, 5));
   }, []);

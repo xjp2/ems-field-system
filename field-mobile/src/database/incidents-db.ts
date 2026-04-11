@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export async function getAllIncidents(): Promise<Incident[]> {
   const results = await querySql<Incident>(
-    `SELECT * FROM incidents WHERE deleted_at IS NULL ORDER BY created_at DESC`
+    `SELECT * FROM incidents ORDER BY created_at DESC`
   );
   return results.map(row => ({
     ...row,
@@ -21,8 +21,7 @@ export async function getAllIncidents(): Promise<Incident[]> {
 export async function getActiveIncidents(): Promise<Incident[]> {
   const results = await querySql<Incident>(
     `SELECT * FROM incidents 
-     WHERE status NOT IN ('closed', 'cancelled') 
-     AND deleted_at IS NULL
+     WHERE status NOT IN ('closed', 'cancelled')
      ORDER BY created_at DESC`
   );
   return results.map(row => ({
@@ -54,6 +53,7 @@ export async function getIncidentById(id: string): Promise<Incident | null> {
 export async function createIncident(
   incident: Omit<Incident, 'id' | 'created_at' | 'updated_at' | 'is_synced'>
 ): Promise<Incident> {
+  console.log('DB: Creating incident...');
   const id = uuidv4();
   const now = new Date().toISOString();
   
@@ -102,6 +102,7 @@ export async function createIncident(
     ]
   );
   
+  console.log('DB: Incident created with ID:', newIncident.id);
   return newIncident;
 }
 
@@ -176,13 +177,10 @@ export async function getUnsyncedIncidents(): Promise<Incident[]> {
 }
 
 /**
- * Delete incident (soft delete)
+ * Delete incident (hard delete)
  */
-export async function softDeleteIncident(id: string): Promise<void> {
-  await executeSql(
-    `UPDATE incidents SET deleted_at = ?, is_synced = 0 WHERE id = ?`,
-    [new Date().toISOString(), id]
-  );
+export async function deleteIncident(id: string): Promise<void> {
+  await executeSql(`DELETE FROM incidents WHERE id = ?`, [id]);
 }
 
 /**
@@ -190,7 +188,7 @@ export async function softDeleteIncident(id: string): Promise<void> {
  */
 export async function getIncidentCount(): Promise<number> {
   const result = await getOne<{ count: number }>(
-    `SELECT COUNT(*) as count FROM incidents WHERE deleted_at IS NULL`
+    `SELECT COUNT(*) as count FROM incidents`
   );
   return result?.count || 0;
 }
