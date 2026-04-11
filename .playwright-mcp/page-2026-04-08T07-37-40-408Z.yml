@@ -1,0 +1,63 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]: emergency
+      - heading "MedResponse" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Field Dispatch System
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: Badge ID
+        - textbox "Enter badge number" [ref=e11]
+      - generic [ref=e12]:
+        - generic [ref=e13]: PIN
+        - textbox "****" [ref=e14]
+      - button "ENTER SYSTEM" [active] [ref=e15] [cursor=pointer]
+    - button "Emergency Override" [ref=e17] [cursor=pointer]
+  - generic [ref=e18]:
+    - banner [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e23]: emergency
+          - generic [ref=e24]:
+            - heading "Dispatch" [level=1] [ref=e25]
+            - paragraph [ref=e26]: Ops Room Online
+        - button "settings" [ref=e27] [cursor=pointer]:
+          - generic [ref=e28]: settings
+    - main [ref=e29]:
+      - button "add_circle NEW INCIDENT" [ref=e30] [cursor=pointer]:
+        - generic [ref=e31]: add_circle
+        - text: NEW INCIDENT
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - text: ACTIVE NOW
+            - heading "Vehicle Accident" [level=2] [ref=e35]
+            - paragraph [ref=e36]: 5th Avenue & Main Street
+          - generic [ref=e37]: 14:32
+        - generic [ref=e38]:
+          - generic [ref=e39]: 3 RED
+          - generic [ref=e40]: 2 YELLOW
+          - generic [ref=e41]: 1 GREEN
+        - button "VIEW INCIDENT" [ref=e42] [cursor=pointer]
+      - heading "Today (3)" [level=3] [ref=e43]
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - heading "Fall Injury" [level=4] [ref=e47]
+          - paragraph [ref=e48]: Central Park Area
+        - generic [ref=e49]: 12:15
+      - generic [ref=e51]:
+        - generic [ref=e52]:
+          - heading "Workplace Injury" [level=4] [ref=e53]
+          - paragraph [ref=e54]: Industrial Zone B
+        - generic [ref=e55]: 09:42
+  - navigation [ref=e56]:
+    - generic [ref=e57]:
+      - button "emergency Dispatch" [ref=e58] [cursor=pointer]:
+        - generic [ref=e59]: emergency
+        - generic [ref=e60]: Dispatch
+      - button "assignment Incident" [ref=e61] [cursor=pointer]:
+        - generic [ref=e62]: assignment
+        - generic [ref=e63]: Incident
+      - button "group Patients" [ref=e64] [cursor=pointer]:
+        - generic [ref=e65]: group
+        - generic [ref=e66]: Patients

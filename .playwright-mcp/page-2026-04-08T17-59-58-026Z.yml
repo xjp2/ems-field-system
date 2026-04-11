@@ -1,0 +1,18 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - img [ref=e6]
+    - heading "EMS Command Center" [level=1] [ref=e8]
+    - paragraph [ref=e9]: Operations Dashboard
+  - generic [ref=e10]:
+    - heading "Sign In" [level=2] [ref=e11]
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic [ref=e14]: Email Address
+        - textbox "Email Address" [ref=e15]:
+          - /placeholder: ops@example.com
+      - generic [ref=e16]:
+        - generic [ref=e17]: Password
+        - textbox "Password" [ref=e18]:
+          - /placeholder: ••••••••
+      - button "Signing in..." [disabled] [ref=e19]: Signing in...
+    - paragraph [ref=e22]: This system is restricted to authorized COMMAND and ADMIN personnel only.

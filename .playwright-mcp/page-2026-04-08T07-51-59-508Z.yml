@@ -1,0 +1,14 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e5]: emergency
+    - heading "MedResponse" [level=1] [ref=e6]
+    - paragraph [ref=e7]: Field Dispatch System
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]: Badge ID
+      - textbox "Enter badge number" [ref=e11]
+    - generic [ref=e12]:
+      - generic [ref=e13]: PIN
+      - textbox "****" [ref=e14]
+    - button "ENTER SYSTEM" [ref=e15] [cursor=pointer]
+  - button "Emergency Override" [ref=e17] [cursor=pointer]
