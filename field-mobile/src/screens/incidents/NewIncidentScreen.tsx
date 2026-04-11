@@ -501,17 +501,27 @@ export function NewIncidentScreen() {
         animationType="slide"
         transparent={false}
       >
-        <SafeAreaView style={styles.mapModalContainer}>
-          <View style={styles.mapHeader}>
-            <TouchableOpacity onPress={() => setMapVisible(false)}>
-              <MaterialIcons name="close" size={28} color="#fff" />
-            </TouchableOpacity>
-            <Text style={styles.mapHeaderTitle}>Select Location</Text>
-            <TouchableOpacity onPress={confirmMapSelection}>
-              <Text style={styles.mapConfirmText}>Confirm</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.mapModalContainer}>
+          {/* Header - Fixed at top */}
+          <SafeAreaView style={styles.mapHeaderSafeArea}>
+            <View style={styles.mapHeader}>
+              <TouchableOpacity 
+                style={styles.mapHeaderButton}
+                onPress={() => setMapVisible(false)}
+              >
+                <MaterialIcons name="close" size={28} color="#fff" />
+              </TouchableOpacity>
+              <Text style={styles.mapHeaderTitle}>Select Location</Text>
+              <TouchableOpacity 
+                style={[styles.mapHeaderButton, styles.mapConfirmButton]}
+                onPress={confirmMapSelection}
+              >
+                <Text style={styles.mapConfirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
           
+          {/* Map - Takes remaining space */}
           <MapView
             style={styles.map}
             region={mapRegion}
@@ -523,19 +533,28 @@ export function NewIncidentScreen() {
                 coordinate={{ latitude, longitude }}
                 draggable
                 onDragEnd={handleMapPress}
+                pinColor="#dc2626"
               />
             )}
           </MapView>
           
-          <View style={styles.mapFooter}>
-            <Text style={styles.mapInstructions}>
-              Tap on the map to place a marker, or drag the existing marker
-            </Text>
-            {address ? (
-              <Text style={styles.mapAddress}>{address}</Text>
-            ) : null}
-          </View>
-        </SafeAreaView>
+          {/* Footer - Fixed at bottom */}
+          <SafeAreaView style={styles.mapFooterSafeArea}>
+            <View style={styles.mapFooter}>
+              <Text style={styles.mapInstructions}>
+                Tap anywhere to place a marker • Drag to adjust
+              </Text>
+              {address ? (
+                <View style={styles.selectedLocationBox}>
+                  <MaterialIcons name="location-on" size={20} color="#dc2626" />
+                  <Text style={styles.mapAddress} numberOfLines={2}>{address}</Text>
+                </View>
+              ) : (
+                <Text style={styles.mapNoLocation}>Tap on map to select location</Text>
+              )}
+            </View>
+          </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -758,46 +777,79 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f0f0f',
   },
+  mapHeaderSafeArea: {
+    backgroundColor: '#1a1a1a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
   mapHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#1a1a1a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    minHeight: 56,
+  },
+  mapHeaderButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 70,
+  },
+  mapConfirmButton: {
+    backgroundColor: '#dc2626',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   mapHeaderTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#fff',
+    flex: 1,
+    textAlign: 'center',
   },
   mapConfirmText: {
-    color: '#dc2626',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   map: {
     flex: 1,
     width: width,
-    height: height - 150,
   },
-  mapFooter: {
-    padding: 16,
+  mapFooterSafeArea: {
     backgroundColor: '#1a1a1a',
     borderTopWidth: 1,
     borderTopColor: '#2a2a2a',
   },
+  mapFooter: {
+    padding: 16,
+  },
   mapInstructions: {
     color: '#9ca3af',
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
+  },
+  selectedLocationBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f0f0f',
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
   },
   mapAddress: {
     color: '#fff',
     fontSize: 14,
-    textAlign: 'center',
     fontWeight: '600',
+    flex: 1,
+    flexWrap: 'wrap',
+  },
+  mapNoLocation: {
+    color: '#6b7280',
+    fontSize: 14,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
