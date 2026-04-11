@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -15,13 +16,19 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { createPatient } from '../../database/patients-db';
 import { addToSyncQueue } from '../../database/sync-queue';
 import { useSyncStore } from '../../stores/sync.store';
-import { TriageLevel, Patient } from '../../types/database';
+import { TriageLevel } from '../../types/database';
 
-const TRIAGE_LEVELS: { key: TriageLevel; label: string; color: string }[] = [
-  { key: 'red', label: 'RED', color: '#dc2626' },
-  { key: 'yellow', label: 'YELLOW', color: '#f59e0b' },
-  { key: 'green', label: 'GREEN', color: '#16a34a' },
-  { key: 'black', label: 'BLACK', color: '#6b7280' },
+const TRIAGE_LEVELS: { key: TriageLevel; label: string; color: string; desc: string }[] = [
+  { key: 'red', label: 'RED', color: '#dc2626', desc: 'Critical - Immediate' },
+  { key: 'yellow', label: 'YELLOW', color: '#f59e0b', desc: 'Urgent - Delayed' },
+  { key: 'green', label: 'GREEN', color: '#16a34a', desc: 'Minor - Walking wounded' },
+  { key: 'black', label: 'BLACK', color: '#6b7280', desc: 'Deceased/Expectant' },
+];
+
+const GENDER_OPTIONS = [
+  { key: 'male', label: 'Male', icon: 'male' },
+  { key: 'female', label: 'Female', icon: 'female' },
+  { key: 'other', label: 'Other', icon: 'person' },
 ];
 
 const OBSERVATION_TAGS = [
@@ -50,6 +57,7 @@ export function NewPatientScreen() {
   const [observations, setObservations] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [genderModalVisible, setGenderModalVisible] = useState(false);
 
   const toggleObservation = (tag: string) => {
     setObservations(prev =>
@@ -57,6 +65,17 @@ export function NewPatientScreen() {
         ? prev.filter(t => t !== tag)
         : [...prev, tag]
     );
+  };
+
+  // Calculate date of birth from age (estimated)
+  const calculateDOB = (ageValue: string): string | undefined => {
+    const ageNum = parseInt(ageValue);
+    if (isNaN(ageNum) || ageNum < 0 || ageNum > 150) return undefined;
+    
+    const now = new Date();
+    const birthYear = now.getFullYear() - ageNum;
+    // Set to Jan 1 of estimated birth year (approximation)
+    return `${birthYear}-01-01`;
   };
 
   const handleSave = async () => {
@@ -71,26 +90,44 @@ export function NewPatientScreen() {
 
     setSaving(true);
     try {
+      // Build medical history from observations + notes
+      const medicalHistoryParts: string[] = [];
+      
+      if (observations.length > 0) {
+        medicalHistoryParts.push(`Initial Observations: ${observations.join(', ')}`);
+      }
+      
+      if (notes.trim()) {
+        medicalHistoryParts.push(`Notes: ${notes.trim()}`);
+      }
+
+      const medicalHistory = medicalHistoryParts.join('\n\n') || undefined;
+      const dateOfBirth = calculateDOB(age);
+
       // Create patient locally
       const patient = await createPatient({
         incident_id: incidentId,
-        first_name: firstName || undefined,
-        last_name: lastName || undefined,
-        gender: gender as any || undefined,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
+        gender: (gender as any) || undefined,
+        date_of_birth: dateOfBirth,
         triage_priority: triage,
-        chief_complaint: condition,
+        chief_complaint: condition.trim(),
         observations,
+        medical_history: medicalHistory,
       });
 
       // Add to sync queue
       await addToSyncQueue('patients', patient.id, 'CREATE', {
         incident_id: incidentId,
-        first_name: firstName || undefined,
-        last_name: lastName || undefined,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
         gender: gender || undefined,
+        date_of_birth: dateOfBirth,
         triage_priority: triage,
-        chief_complaint: condition,
+        chief_complaint: condition.trim(),
         observations,
+        medical_history: medicalHistory,
       });
 
       // Trigger immediate sync (fire and forget)
@@ -103,6 +140,16 @@ export function NewPatientScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const selectGender = (selectedGender: string) => {
+    setGender(selectedGender);
+    setGenderModalVisible(false);
+  };
+
+  const getSelectedGenderLabel = () => {
+    const option = GENDER_OPTIONS.find(g => g.key === gender);
+    return option ? option.label : 'Select Sex';
   };
 
   return (
@@ -126,7 +173,11 @@ export function NewPatientScreen() {
                 key={level.key}
                 style={[
                   styles.triageCard,
-                  triage === level.key && { borderColor: level.color, borderWidth: 2 },
+                  triage === level.key && { 
+                    borderColor: level.color, 
+                    borderWidth: 2,
+                    backgroundColor: `${level.color}15`,
+                  },
                 ]}
                 onPress={() => setTriage(level.key)}
               >
@@ -144,6 +195,7 @@ export function NewPatientScreen() {
                 >
                   {level.label}
                 </Text>
+                <Text style={styles.triageDesc}>{level.desc}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -152,33 +204,58 @@ export function NewPatientScreen() {
         {/* Patient Identity */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Patient Identity</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Full Name (or Unknown)"
-            placeholderTextColor="#6b7280"
-            value={firstName}
-            onChangeText={setFirstName}
-          />
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={[styles.select, { flex: 1, marginRight: 8 }]}
-              onPress={() => {
-                // Simple toggle for demo
-                setGender(g === 'Male' ? 'Female' : 'Male');
-              }}
-            >
-              <Text style={gender ? styles.selectValue : styles.selectPlaceholder}>
-                {gender || 'Sex'}
-              </Text>
-            </TouchableOpacity>
+          
+          {/* Name Fields */}
+          <View style={styles.nameRow}>
             <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="Age"
+              style={[styles.input, styles.flex1, styles.marginRight]}
+              placeholder="First Name"
               placeholderTextColor="#6b7280"
-              value={age}
-              onChangeText={setAge}
-              keyboardType="number-pad"
+              value={firstName}
+              onChangeText={setFirstName}
             />
+            <TextInput
+              style={[styles.input, styles.flex1]}
+              placeholder="Last Name"
+              placeholderTextColor="#6b7280"
+              value={lastName}
+              onChangeText={setLastName}
+            />
+          </View>
+          
+          {/* Gender and Age Row */}
+          <View style={styles.row}>
+            {/* Gender Selector */}
+            <TouchableOpacity
+              style={[styles.select, styles.flex1, styles.marginRight]}
+              onPress={() => setGenderModalVisible(true)}
+            >
+              <View style={styles.selectContent}>
+                <MaterialIcons 
+                  name={gender ? 'person' : 'help-outline'} 
+                  size={18} 
+                  color={gender ? '#fff' : '#6b7280'} 
+                />
+                <Text style={gender ? styles.selectValue : styles.selectPlaceholder}>
+                  {getSelectedGenderLabel()}
+                </Text>
+              </View>
+              <MaterialIcons name="arrow-drop-down" size={24} color="#6b7280" />
+            </TouchableOpacity>
+            
+            {/* Age Input */}
+            <View style={[styles.inputContainer, styles.flex1]}>
+              <TextInput
+                style={styles.ageInput}
+                placeholder="Age"
+                placeholderTextColor="#6b7280"
+                value={age}
+                onChangeText={setAge}
+                keyboardType="number-pad"
+                maxLength={3}
+              />
+              <Text style={styles.ageUnit}>yrs</Text>
+            </View>
           </View>
         </View>
 
@@ -196,7 +273,7 @@ export function NewPatientScreen() {
 
         {/* Field Observations */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Field Observations</Text>
+          <Text style={styles.sectionLabel}>Initial Observations</Text>
           <View style={styles.tagsContainer}>
             {OBSERVATION_TAGS.map((tag) => (
               <TouchableOpacity
@@ -204,15 +281,18 @@ export function NewPatientScreen() {
                 style={[
                   styles.tag,
                   observations.includes(tag) && styles.tagActive,
-                  tag === 'Unresponsive' && styles.tagWarning,
+                  tag === 'Unresponsive' && !observations.includes(tag) && styles.tagWarning,
                 ]}
                 onPress={() => toggleObservation(tag)}
               >
+                {observations.includes(tag) && (
+                  <MaterialIcons name="check" size={14} color="#fff" style={styles.tagIcon} />
+                )}
                 <Text
                   style={[
                     styles.tagText,
                     observations.includes(tag) && styles.tagTextActive,
-                    tag === 'Unresponsive' && styles.tagTextWarning,
+                    tag === 'Unresponsive' && !observations.includes(tag) && styles.tagTextWarning,
                   ]}
                 >
                   {tag}
@@ -220,19 +300,18 @@ export function NewPatientScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          
+          {/* Notes */}
           <View style={styles.notesContainer}>
             <TextInput
               style={[styles.input, styles.notesInput]}
-              placeholder="What you observed on initial assessment..."
+              placeholder="Additional notes from initial assessment..."
               placeholderTextColor="#6b7280"
               value={notes}
               onChangeText={setNotes}
               multiline
               numberOfLines={4}
             />
-            <TouchableOpacity style={styles.micButton}>
-              <MaterialIcons name="mic" size={20} color="#fff" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -247,11 +326,52 @@ export function NewPatientScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Gender Selection Modal */}
+      <Modal
+        visible={genderModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setGenderModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setGenderModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Sex</Text>
+            {GENDER_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.key}
+                style={[
+                  styles.modalOption,
+                  gender === option.key && styles.modalOptionSelected,
+                ]}
+                onPress={() => selectGender(option.key)}
+              >
+                <MaterialIcons 
+                  name={option.icon as any} 
+                  size={24} 
+                  color={gender === option.key ? '#dc2626' : '#9ca3af'} 
+                />
+                <Text style={[
+                  styles.modalOptionText,
+                  gender === option.key && styles.modalOptionTextSelected,
+                ]}>
+                  {option.label}
+                </Text>
+                {gender === option.key && (
+                  <MaterialIcons name="check" size={20} color="#dc2626" />
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
-
-const g = 'Male';
 
 const styles = StyleSheet.create({
   container: {
@@ -296,7 +416,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2a2a2a',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     alignItems: 'center',
   },
   triageCircle: {
@@ -310,6 +430,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#9ca3af',
   },
+  triageDesc: {
+    fontSize: 9,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 4,
+  },
   input: {
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
@@ -318,10 +444,39 @@ const styles = StyleSheet.create({
     padding: 16,
     color: '#fff',
     fontSize: 16,
+  },
+  nameRow: {
+    flexDirection: 'row',
     marginBottom: 12,
+  },
+  flex1: {
+    flex: 1,
+  },
+  marginRight: {
+    marginRight: 8,
   },
   row: {
     flexDirection: 'row',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+  },
+  ageInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    paddingVertical: 16,
+  },
+  ageUnit: {
+    color: '#6b7280',
+    fontSize: 14,
+    marginLeft: 4,
   },
   select: {
     backgroundColor: '#1a1a1a',
@@ -329,7 +484,14 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a2a',
     borderRadius: 12,
     padding: 16,
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   selectValue: {
     color: '#fff',
@@ -346,49 +508,44 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
     borderColor: '#374151',
     borderRadius: 16,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    gap: 4,
   },
   tagActive: {
-    backgroundColor: '#374151',
-    borderColor: '#6b7280',
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
   },
   tagWarning: {
-    backgroundColor: 'rgba(220, 38, 38, 0.2)',
-    borderColor: '#991b1b',
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    borderColor: '#dc2626',
+  },
+  tagIcon: {
+    marginRight: 2,
   },
   tagText: {
     color: '#9ca3af',
-    fontSize: 12,
+    fontSize: 13,
   },
   tagTextActive: {
     color: '#fff',
+    fontWeight: '600',
   },
   tagTextWarning: {
     color: '#fca5a5',
   },
   notesContainer: {
-    position: 'relative',
+    marginTop: 8,
   },
   notesInput: {
     height: 100,
     textAlignVertical: 'top',
-    paddingRight: 48,
-  },
-  micButton: {
-    position: 'absolute',
-    right: 12,
-    bottom: 24,
-    width: 36,
-    height: 36,
-    backgroundColor: '#374151',
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   saveButton: {
     backgroundColor: '#dc2626',
@@ -405,5 +562,49 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+    maxWidth: 300,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    gap: 12,
+  },
+  modalOptionSelected: {
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+  },
+  modalOptionText: {
+    color: '#9ca3af',
+    fontSize: 16,
+    flex: 1,
+  },
+  modalOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });

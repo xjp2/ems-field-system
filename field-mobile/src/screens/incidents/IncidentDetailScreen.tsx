@@ -303,7 +303,7 @@ export function IncidentDetailScreen() {
                   </View>
                 </View>
                 <Text style={styles.patientDetails}>
-                  {patient.gender || '?'} • ~{patient.date_of_birth ? calculateAge(patient.date_of_birth) : '?'}y • {patient.chief_complaint || 'No condition'}
+                  {(patient.gender || '?').toUpperCase()} • {calculateAge(patient.date_of_birth)} • {patient.chief_complaint || 'No condition'}
                 </Text>
               </View>
               <MaterialIcons name="chevron-right" size={24} color="#6b7280" />
@@ -325,10 +325,13 @@ function getTriageColor(triage: string): string {
   return colors[triage] || '#6b7280';
 }
 
-function calculateAge(dob: string): number {
+// Calculate age from date_of_birth
+function calculateAge(dob: string | undefined): string {
+  if (!dob) return '?';
   const birth = new Date(dob);
   const now = new Date();
-  return Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  const age = Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+  return age > 0 ? `${age}y` : '?';
 }
 
 // Parse casualty estimate from scene_description
