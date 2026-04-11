@@ -2,6 +2,7 @@ services:
   - type: web
     name: ems-backend
     runtime: node
+    rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm run start:prod
     envVars:
