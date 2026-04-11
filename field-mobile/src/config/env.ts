@@ -13,7 +13,7 @@
 type Environment = 'development' | 'staging' | 'production';
 
 // CHANGE THIS FOR PRODUCTION BUILDS
-const ACTIVE_ENV: Environment = 'development';
+const ACTIVE_ENV: Environment = 'production';
 
 // Development: Your computer's local network IP
 // Find it with: ipconfig (Windows) or ifconfig (Mac/Linux)
@@ -23,7 +23,7 @@ const DEV_API_URL = 'http://172.20.10.2:3000';  // Your computer's IP
 const STAGING_API_URL = 'https://api-staging.emergency-response.com';
 
 // Production: Your live server (set this when deploying!)
-const PROD_API_URL = 'https://api.emergency-response.com';
+const PROD_API_URL = 'https://ems-backend-ygdb.onrender.com';
 
 // Get the active API URL
 export const API_BASE_URL = {

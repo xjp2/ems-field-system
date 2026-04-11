@@ -10,7 +10,9 @@ import {
   markIncidentSynced,
   getIncidentServerId,
 } from '../database/incidents-db';
-import { markPatientSynced } from '../database/patients-db';
+import { markPatientSynced, getPatientServerId } from '../database/patients-db';
+import { markVitalSynced } from '../database/vitals-db';
+import { markInterventionSynced } from '../database/interventions-db';
 import { SyncResult, SyncQueueEntry } from '../types/database';
 
 const MAX_RETRIES = 5;
@@ -201,7 +203,23 @@ async function syncVital(
   payload: any
 ): Promise<void> {
   if (operation.operation === 'CREATE') {
-    await api.post(endpoints.vitals.create(), payload);
+    // Look up the server_id for the patient
+    const serverPatientId = await getPatientServerId(payload.patient_id);
+    if (!serverPatientId) {
+      throw new Error(`Patient ${payload.patient_id} not yet synced to server. Will retry after patient syncs.`);
+    }
+    
+    // Replace local patient_id with server patient_id
+    const vitalPayload = {
+      ...payload,
+      patient_id: serverPatientId,
+    };
+    
+    console.log('Creating vital with server patient_id:', serverPatientId);
+    const { data: created } = await api.post(endpoints.vitals.create(), vitalPayload);
+    
+    // Mark as synced with server_id
+    await markVitalSynced(operation.local_id, created.id);
   }
 }
 
@@ -213,7 +231,23 @@ async function syncIntervention(
   payload: any
 ): Promise<void> {
   if (operation.operation === 'CREATE') {
-    await api.post(endpoints.interventions.create(), payload);
+    // Look up the server_id for the patient
+    const serverPatientId = await getPatientServerId(payload.patient_id);
+    if (!serverPatientId) {
+      throw new Error(`Patient ${payload.patient_id} not yet synced to server. Will retry after patient syncs.`);
+    }
+    
+    // Replace local patient_id with server patient_id
+    const interventionPayload = {
+      ...payload,
+      patient_id: serverPatientId,
+    };
+    
+    console.log('Creating intervention with server patient_id:', serverPatientId);
+    const { data: created } = await api.post(endpoints.interventions.create(), interventionPayload);
+    
+    // Mark as synced with server_id
+    await markInterventionSynced(operation.local_id, created.id);
   }
 }
 

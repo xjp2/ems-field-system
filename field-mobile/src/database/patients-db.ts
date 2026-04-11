@@ -201,3 +201,14 @@ export async function getTriageCounts(incidentId: string): Promise<{
   });
   return counts;
 }
+
+/**
+ * Get server_id for a local patient
+ */
+export async function getPatientServerId(localId: string): Promise<string | null> {
+  const result = await getOne<{ server_id: string }>(
+    `SELECT server_id FROM patients WHERE id = ?`,
+    [localId]
+  );
+  return result?.server_id || null;
+}
