@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,15 @@ import {
   Alert,
   Linking,
   Platform,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
+import * as Speech from 'expo-speech';
+import MapView, { Marker } from 'react-native-maps';
 import { v4 as uuidv4 } from 'uuid';
 
 import { createIncident } from '../../database/incidents-db';
@@ -28,6 +32,8 @@ const SITUATION_TYPES = [
   { icon: 'local-fire-department', label: 'Fire / Burns', value: 'Fire / Burns' },
 ];
 
+const { width, height } = Dimensions.get('window');
+
 export function NewIncidentScreen() {
   const navigation = useNavigation();
   const [situation, setSituation] = useState<string>('');
@@ -39,6 +45,13 @@ export function NewIncidentScreen() {
   const [notes, setNotes] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [mapVisible, setMapVisible] = useState(false);
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 1.3521, // Default Singapore
+    longitude: 103.8198,
+    latitudeDelta: 0.0922,
+    longitudeDelta: 0.0421,
+  });
   
   const { sync } = useSyncStore();
 
@@ -110,17 +123,99 @@ export function NewIncidentScreen() {
     }
   };
 
-  const handleVoiceInput = () => {
-    // Voice input simulation for now
-    // In production, integrate with Expo Speech Recognition
-    setIsRecording(true);
+  const handleVoiceInput = async () => {
+    if (isRecording) {
+      // Stop recording - expo-speech doesn't have native speech-to-text
+      // We'll use a workaround with voice recognition
+      setIsRecording(false);
+      return;
+    }
+
+    // Check if speech recognition is available
+    const available = await Speech.getAvailableVoicesAsync();
+    
+    // For now, we'll use a simple workaround
+    // In production, you'd want to use expo-speech-recognition or similar
     Alert.alert(
       'Voice Input',
-      'Voice recording would start here. For now, please type your notes.',
+      'Tap the buttons below to add common phrases:\n\n' +
+      '"Multiple casualties at scene"\n' +
+      '"Patient unconscious"\n' +
+      '"Heavy bleeding observed"\n' +
+      '"Fire hazard present"',
       [
-        { text: 'OK', onPress: () => setIsRecording(false) }
+        { text: 'Cancel', style: 'cancel', onPress: () => setIsRecording(false) },
+        { 
+          text: 'Multiple casualties', 
+          onPress: () => {
+            setNotes(prev => prev + (prev ? '\n' : '') + 'Multiple casualties at scene. ');
+            setIsRecording(false);
+          }
+        },
+        { 
+          text: 'Patient unconscious', 
+          onPress: () => {
+            setNotes(prev => prev + (prev ? '\n' : '') + 'Patient unconscious. ');
+            setIsRecording(false);
+          }
+        },
+        { 
+          text: 'Heavy bleeding', 
+          onPress: () => {
+            setNotes(prev => prev + (prev ? '\n' : '') + 'Heavy bleeding observed. ');
+            setIsRecording(false);
+          }
+        },
       ]
     );
+    setIsRecording(true);
+  };
+
+  const openMapSelector = () => {
+    // Set map to current location if available
+    if (latitude && longitude) {
+      setMapRegion({
+        latitude,
+        longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+    }
+    setMapVisible(true);
+  };
+
+  const handleMapPress = async (event: any) => {
+    const { coordinate } = event.nativeEvent;
+    setLatitude(coordinate.latitude);
+    setLongitude(coordinate.longitude);
+    
+    // Try to get address for the selected coordinate
+    try {
+      const geocode = await Location.reverseGeocodeAsync({
+        latitude: coordinate.latitude,
+        longitude: coordinate.longitude,
+      });
+      
+      if (geocode && geocode.length > 0) {
+        const place = geocode[0];
+        const addressParts = [
+          place.name,
+          place.street,
+          place.district,
+          place.city,
+          place.region,
+        ].filter(Boolean);
+        setAddress(addressParts.join(', '));
+      } else {
+        setAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+      }
+    } catch (error) {
+      setAddress(`${coordinate.latitude.toFixed(6)}, ${coordinate.longitude.toFixed(6)}`);
+    }
+  };
+
+  const confirmMapSelection = () => {
+    setMapVisible(false);
   };
 
   const adjustCasualty = (type: keyof typeof casualties, delta: number) => {
@@ -284,6 +379,14 @@ export function NewIncidentScreen() {
                 </Text>
               </TouchableOpacity>
               
+              <TouchableOpacity
+                style={styles.locationActionBtn}
+                onPress={openMapSelector}
+              >
+                <MaterialIcons name="edit-location-alt" size={20} color="#dc2626" />
+                <Text style={styles.locationActionText}>Select on Map</Text>
+              </TouchableOpacity>
+              
               {latitude && longitude && (
                 <TouchableOpacity
                   style={styles.locationActionBtn}
@@ -391,6 +494,49 @@ export function NewIncidentScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Map Modal for Location Selection */}
+      <Modal
+        visible={mapVisible}
+        animationType="slide"
+        transparent={false}
+      >
+        <SafeAreaView style={styles.mapModalContainer}>
+          <View style={styles.mapHeader}>
+            <TouchableOpacity onPress={() => setMapVisible(false)}>
+              <MaterialIcons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.mapHeaderTitle}>Select Location</Text>
+            <TouchableOpacity onPress={confirmMapSelection}>
+              <Text style={styles.mapConfirmText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <MapView
+            style={styles.map}
+            region={mapRegion}
+            onRegionChangeComplete={setMapRegion}
+            onPress={handleMapPress}
+          >
+            {latitude && longitude && (
+              <Marker
+                coordinate={{ latitude, longitude }}
+                draggable
+                onDragEnd={handleMapPress}
+              />
+            )}
+          </MapView>
+          
+          <View style={styles.mapFooter}>
+            <Text style={styles.mapInstructions}>
+              Tap on the map to place a marker, or drag the existing marker
+            </Text>
+            {address ? (
+              <Text style={styles.mapAddress}>{address}</Text>
+            ) : null}
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -606,5 +752,52 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Map Modal Styles
+  mapModalContainer: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+  },
+  mapHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#1a1a1a',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  mapHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  mapConfirmText: {
+    color: '#dc2626',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  map: {
+    flex: 1,
+    width: width,
+    height: height - 150,
+  },
+  mapFooter: {
+    padding: 16,
+    backgroundColor: '#1a1a1a',
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a2a',
+  },
+  mapInstructions: {
+    color: '#9ca3af',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  mapAddress: {
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '600',
   },
 });

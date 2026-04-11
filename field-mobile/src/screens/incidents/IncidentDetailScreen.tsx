@@ -5,10 +5,13 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import MapView, { Marker } from 'react-native-maps';
 
 import { Incident, Patient } from '../../types/database';
 import { getIncidentById } from '../../database/incidents-db';
@@ -58,6 +61,11 @@ export function IncidentDetailScreen() {
   }
 
   const currentStatusIndex = STATUS_FLOW.findIndex(s => s.key === incident.status);
+  
+  // Parse casualty estimate from scene description
+  const { estimate: casualtyEstimate, notes: sceneNotes } = incident.scene_description 
+    ? parseCasualtyEstimate(incident.scene_description)
+    : { estimate: null, notes: '' };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -129,6 +137,17 @@ export function IncidentDetailScreen() {
           </View>
         </View>
 
+        {/* Situation Type */}
+        {incident.chief_complaint && (
+          <View style={styles.card}>
+            <View style={styles.cardIconRow}>
+              <MaterialIcons name="emergency" size={20} color="#dc2626" />
+              <Text style={styles.cardTitle}>Situation Type</Text>
+            </View>
+            <Text style={styles.situationText}>{incident.chief_complaint}</Text>
+          </View>
+        )}
+
         {/* Location */}
         <View style={styles.card}>
           <View style={styles.cardIconRow}>
@@ -136,21 +155,84 @@ export function IncidentDetailScreen() {
             <Text style={styles.cardTitle}>Location</Text>
           </View>
           <Text style={styles.locationText}>{incident.address}</Text>
-          {incident.latitude && (
-            <Text style={styles.gpsText}>
-              GPS: {incident.latitude.toFixed(4)}°, {incident.longitude?.toFixed(4)}°
-            </Text>
+          {incident.latitude && incident.longitude && (
+            <TouchableOpacity 
+              style={styles.mapPreviewContainer}
+              onPress={() => openMap(incident.latitude!, incident.longitude!)}
+            >
+              <MapView
+                style={styles.mapPreview}
+                region={{
+                  latitude: incident.latitude,
+                  longitude: incident.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+                scrollEnabled={false}
+                zoomEnabled={false}
+                rotateEnabled={false}
+                pitchEnabled={false}
+              >
+                <Marker
+                  coordinate={{ latitude: incident.latitude, longitude: incident.longitude }}
+                  pinColor="#dc2626"
+                />
+              </MapView>
+              <View style={styles.mapOverlay}>
+                <MaterialIcons name="open-in-new" size={20} color="#fff" />
+                <Text style={styles.mapOverlayText}>Open in Maps</Text>
+              </View>
+            </TouchableOpacity>
           )}
         </View>
 
+        {/* Initial Casualty Estimate */}
+        {casualtyEstimate && (
+          <View style={styles.card}>
+            <View style={styles.cardIconRow}>
+              <MaterialIcons name="groups" size={20} color="#dc2626" />
+              <Text style={styles.cardTitle}>Initial Casualty Estimate</Text>
+            </View>
+            <View style={styles.estimateGrid}>
+              <View style={styles.estimateItem}>
+                <Text style={[styles.estimateCount, { color: '#dc2626' }]}>
+                  {casualtyEstimate.red}
+                </Text>
+                <Text style={styles.estimateLabel}>RED</Text>
+              </View>
+              <View style={styles.estimateItem}>
+                <Text style={[styles.estimateCount, { color: '#f59e0b' }]}>
+                  {casualtyEstimate.yellow}
+                </Text>
+                <Text style={styles.estimateLabel}>YELLOW</Text>
+              </View>
+              <View style={styles.estimateItem}>
+                <Text style={[styles.estimateCount, { color: '#16a34a' }]}>
+                  {casualtyEstimate.green}
+                </Text>
+                <Text style={styles.estimateLabel}>GREEN</Text>
+              </View>
+              <View style={styles.estimateItem}>
+                <Text style={[styles.estimateCount, { color: '#6b7280' }]}>
+                  {casualtyEstimate.black}
+                </Text>
+                <Text style={styles.estimateLabel}>BLACK</Text>
+              </View>
+            </View>
+            <Text style={styles.estimateNote}>
+              First arrival estimate • Compare with actual patient count below
+            </Text>
+          </View>
+        )}
+
         {/* Scene Notes */}
-        {incident.scene_description && (
+        {sceneNotes && (
           <View style={styles.card}>
             <View style={styles.cardIconRow}>
               <MaterialIcons name="description" size={20} color="#dc2626" />
               <Text style={styles.cardTitle}>Scene Notes</Text>
             </View>
-            <Text style={styles.notesText}>{incident.scene_description}</Text>
+            <Text style={styles.notesText}>{sceneNotes}</Text>
           </View>
         )}
 
@@ -247,6 +329,35 @@ function calculateAge(dob: string): number {
   const birth = new Date(dob);
   const now = new Date();
   return Math.floor((now.getTime() - birth.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+}
+
+// Parse casualty estimate from scene_description
+function parseCasualtyEstimate(sceneDescription: string): { 
+  estimate: { red: number; yellow: number; green: number; black: number } | null;
+  notes: string;
+} {
+  const match = sceneDescription.match(/Initial Casualty Estimate: RED: (\d+), YELLOW: (\d+), GREEN: (\d+), BLACK: (\d+)/);
+  if (match) {
+    const notes = sceneDescription.replace(/Initial Casualty Estimate:.*?\n?\n?/, '').trim();
+    return {
+      estimate: {
+        red: parseInt(match[1]),
+        yellow: parseInt(match[2]),
+        green: parseInt(match[3]),
+        black: parseInt(match[4]),
+      },
+      notes,
+    };
+  }
+  return { estimate: null, notes: sceneDescription };
+}
+
+function openMap(lat: number, lng: number) {
+  const url = Platform.select({
+    ios: `maps:${lat},${lng}`,
+    android: `geo:${lat},${lng}?q=${lat},${lng}`,
+  });
+  if (url) Linking.openURL(url);
 }
 
 const styles = StyleSheet.create({
@@ -520,5 +631,63 @@ const styles = StyleSheet.create({
   patientDetails: {
     fontSize: 13,
     color: '#9ca3af',
+  },
+  situationText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  mapPreviewContainer: {
+    marginTop: 12,
+    height: 150,
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  mapPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  mapOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  mapOverlayText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  estimateGrid: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 12,
+  },
+  estimateItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  estimateCount: {
+    fontSize: 32,
+    fontWeight: 'bold',
+  },
+  estimateLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  estimateNote: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 });
