@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
@@ -31,11 +33,19 @@ export function NewIncidentScreen() {
   const [situation, setSituation] = useState<string>('');
   const [address, setAddress] = useState('');
   const [locationLoading, setLocationLoading] = useState(false);
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
   const [casualties, setCasualties] = useState({ red: 0, yellow: 0, green: 0, black: 0 });
   const [notes, setNotes] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
   const [creating, setCreating] = useState(false);
   
   const { sync } = useSyncStore();
+
+  // Auto-get location on mount
+  useEffect(() => {
+    getCurrentLocation();
+  }, []);
 
   const getCurrentLocation = async () => {
     setLocationLoading(true);
@@ -46,13 +56,71 @@ export function NewIncidentScreen() {
         return;
       }
       
-      const location = await Location.getCurrentPositionAsync({});
-      setAddress(`${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`);
+      // Get high accuracy location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      
+      const { latitude, longitude } = location.coords;
+      setLatitude(latitude);
+      setLongitude(longitude);
+      
+      // Try to get address from coordinates
+      try {
+        const geocode = await Location.reverseGeocodeAsync({
+          latitude,
+          longitude,
+        });
+        
+        if (geocode && geocode.length > 0) {
+          const place = geocode[0];
+          const addressParts = [
+            place.name,
+            place.street,
+            place.district,
+            place.city,
+            place.region,
+          ].filter(Boolean);
+          
+          const formattedAddress = addressParts.join(', ');
+          setAddress(formattedAddress || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+        } else {
+          setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+        }
+      } catch (geoError) {
+        // If geocoding fails, use coordinates
+        setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      }
     } catch (error) {
-      Alert.alert('Error', 'Could not get location');
+      Alert.alert('Error', 'Could not get location. Please enter manually.');
     } finally {
       setLocationLoading(false);
     }
+  };
+
+  const openMap = () => {
+    if (latitude && longitude) {
+      const url = Platform.select({
+        ios: `maps:${latitude},${longitude}`,
+        android: `geo:${latitude},${longitude}?q=${latitude},${longitude}`,
+      });
+      if (url) Linking.openURL(url);
+    } else {
+      Alert.alert('No location', 'Please get location first');
+    }
+  };
+
+  const handleVoiceInput = () => {
+    // Voice input simulation for now
+    // In production, integrate with Expo Speech Recognition
+    setIsRecording(true);
+    Alert.alert(
+      'Voice Input',
+      'Voice recording would start here. For now, please type your notes.',
+      [
+        { text: 'OK', onPress: () => setIsRecording(false) }
+      ]
+    );
   };
 
   const adjustCasualty = (type: keyof typeof casualties, delta: number) => {
@@ -79,14 +147,23 @@ export function NewIncidentScreen() {
       if (casualties.red > 0) priority = 'critical';
       else if (casualties.yellow > 0) priority = 'urgent';
 
-      // Create incident locally
+      // Build scene description with casualty estimate
+      const casualtyEstimate = `Initial Casualty Estimate: RED: ${casualties.red}, YELLOW: ${casualties.yellow}, GREEN: ${casualties.green}, BLACK: ${casualties.black}`;
+      const fullSceneDescription = notes 
+        ? `${notes}\n\n${casualtyEstimate}` 
+        : casualtyEstimate;
+
+      // Create incident locally with all data
       const incident = await createIncident({
         incident_number: `INC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
         address,
+        latitude: latitude || undefined,
+        longitude: longitude || undefined,
+        location_description: address,
         status: 'on_scene' as IncidentStatus,
         priority,
         chief_complaint: situation,
-        scene_description: notes,
+        scene_description: fullSceneDescription,
         local_id: uuidv4(),
         device_id: 'mobile-device',
       });
@@ -95,10 +172,13 @@ export function NewIncidentScreen() {
       await addToSyncQueue('incidents', incident.id, 'CREATE', {
         incident_number: incident.incident_number,
         address,
+        latitude,
+        longitude,
+        location_description: address,
         status: 'on_scene',
         priority,
         chief_complaint: situation,
-        scene_description: notes,
+        scene_description: fullSceneDescription,
         local_id: incident.local_id,
       });
 
@@ -175,43 +255,73 @@ export function NewIncidentScreen() {
         {/* Location */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>2. Location *</Text>
-          <View style={styles.locationInput}>
+          
+          {/* Location Display */}
+          <View style={styles.locationContainer}>
             <TextInput
-              style={styles.input}
-              placeholder="Enter address or landmark"
+              style={[styles.input, styles.locationInput]}
+              placeholder="Detecting location..."
               placeholderTextColor="#6b7280"
               value={address}
               onChangeText={setAddress}
               multiline
             />
-            <TouchableOpacity
-              style={styles.locationButton}
-              onPress={getCurrentLocation}
-              disabled={locationLoading}
-            >
-              <MaterialIcons
-                name={locationLoading ? 'location-searching' : 'my-location'}
-                size={24}
-                color="#dc2626"
-              />
-            </TouchableOpacity>
+            
+            {/* Location Actions */}
+            <View style={styles.locationActions}>
+              <TouchableOpacity
+                style={styles.locationActionBtn}
+                onPress={getCurrentLocation}
+                disabled={locationLoading}
+              >
+                <MaterialIcons
+                  name={locationLoading ? 'location-searching' : 'gps-fixed'}
+                  size={20}
+                  color="#dc2626"
+                />
+                <Text style={styles.locationActionText}>
+                  {locationLoading ? 'Detecting...' : 'Refresh'}
+                </Text>
+              </TouchableOpacity>
+              
+              {latitude && longitude && (
+                <TouchableOpacity
+                  style={styles.locationActionBtn}
+                  onPress={openMap}
+                >
+                  <MaterialIcons name="map" size={20} color="#dc2626" />
+                  <Text style={styles.locationActionText}>View Map</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            {/* Coordinates Display */}
+            {latitude && longitude && (
+              <Text style={styles.coordinatesText}>
+                {latitude.toFixed(6)}, {longitude.toFixed(6)}
+              </Text>
+            )}
           </View>
         </View>
 
-        {/* Casualties */}
+        {/* Casualties - Initial Estimate */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>3. Casualties</Text>
+          <Text style={styles.sectionLabel}>3. Initial Casualty Estimate</Text>
+          <Text style={styles.casualtySubtitle}>
+            First arrival estimate - will be compared with actual patient count
+          </Text>
           <View style={styles.casualtiesGrid}>
             {[
-              { key: 'red', label: 'RED', color: '#dc2626' },
-              { key: 'yellow', label: 'YELLOW', color: '#f59e0b' },
-              { key: 'green', label: 'GREEN', color: '#16a34a' },
-              { key: 'black', label: 'BLACK', color: '#6b7280' },
+              { key: 'red', label: 'RED', color: '#dc2626', desc: 'Critical' },
+              { key: 'yellow', label: 'YELLOW', color: '#f59e0b', desc: 'Urgent' },
+              { key: 'green', label: 'GREEN', color: '#16a34a', desc: 'Minor' },
+              { key: 'black', label: 'BLACK', color: '#6b7280', desc: 'Deceased' },
             ].map((item) => (
               <View key={item.key} style={styles.casualtyCard}>
                 <Text style={[styles.casualtyLabel, { color: item.color }]}>
                   {item.label}
                 </Text>
+                <Text style={styles.casualtyDesc}>{item.desc}</Text>
                 <View style={styles.casualtyControls}>
                   <TouchableOpacity
                     style={styles.casualtyButton}
@@ -232,11 +342,33 @@ export function NewIncidentScreen() {
               </View>
             ))}
           </View>
+          
+          {/* Summary */}
+          <View style={styles.casualtySummary}>
+            <Text style={styles.casualtySummaryText}>
+              Total Estimated: {casualties.red + casualties.yellow + casualties.green + casualties.black}
+            </Text>
+          </View>
         </View>
 
-        {/* Notes */}
+        {/* Scene Notes with Voice Input */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Scene Notes</Text>
+          <View style={styles.notesHeader}>
+            <Text style={styles.sectionLabel}>Scene Notes</Text>
+            <TouchableOpacity 
+              style={[styles.voiceButton, isRecording && styles.voiceButtonActive]}
+              onPress={handleVoiceInput}
+            >
+              <MaterialIcons 
+                name={isRecording ? 'mic' : 'mic-none'} 
+                size={20} 
+                color={isRecording ? '#dc2626' : '#9ca3af'} 
+              />
+              <Text style={[styles.voiceText, isRecording && styles.voiceTextActive]}>
+                {isRecording ? 'Recording...' : 'Voice'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <TextInput
             style={[styles.input, styles.notesInput]}
             placeholder="Describe what you found on arrival..."
@@ -322,30 +454,83 @@ const styles = StyleSheet.create({
   situationLabelActive: {
     color: '#dc2626',
   },
-  locationInput: {
-    position: 'relative',
-  },
-  input: {
+  locationContainer: {
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
     borderColor: '#2a2a2a',
     borderRadius: 12,
     padding: 16,
+  },
+  input: {
+    backgroundColor: '#0f0f0f',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 12,
     color: '#fff',
     fontSize: 16,
   },
-  locationButton: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
+  locationInput: {
+    marginBottom: 12,
+  },
+  locationActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  locationActionBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#0f0f0f',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  locationActionText: {
+    color: '#dc2626',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  coordinatesText: {
+    color: '#6b7280',
+    fontSize: 11,
+    fontFamily: Platform.select({ ios: 'Courier', android: 'monospace' }),
+  },
+  notesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  voiceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  voiceButtonActive: {
+    backgroundColor: '#dc262620',
+  },
+  voiceText: {
+    color: '#9ca3af',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  voiceTextActive: {
+    color: '#dc2626',
   },
   notesInput: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  casualtySubtitle: {
+    color: '#6b7280',
+    fontSize: 12,
+    marginBottom: 12,
   },
   casualtiesGrid: {
     flexDirection: 'row',
@@ -357,12 +542,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#2a2a2a',
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
   },
   casualtyLabel: {
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  casualtyDesc: {
+    color: '#6b7280',
+    fontSize: 9,
     marginBottom: 8,
   },
   casualtyControls: {
@@ -389,6 +578,18 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     minWidth: 24,
     textAlign: 'center',
+  },
+  casualtySummary: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#0f0f0f',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  casualtySummaryText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   createButton: {
     backgroundColor: '#dc2626',
