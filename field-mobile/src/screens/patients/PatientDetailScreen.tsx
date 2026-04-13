@@ -299,7 +299,10 @@ export function PatientDetailScreen() {
         <View style={styles.actionButtons}>
           <TouchableOpacity 
             style={[styles.actionBtn, styles.vitalBtn]}
-            onPress={() => navigation.navigate('AddVital', { patientId, incidentId } as never)}
+            onPress={() => {
+              console.log('Navigating to AddVital with:', { patientId, incidentId });
+              navigation.navigate('AddVital', { patientId, incidentId } as never);
+            }}
           >
             <MaterialIcons name="favorite" size={24} color="#fff" />
             <Text style={styles.actionBtnText}>Add Vitals</Text>

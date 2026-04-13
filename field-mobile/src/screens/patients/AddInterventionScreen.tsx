@@ -22,9 +22,9 @@ import { InterventionType } from '../../types/database';
 const INTERVENTION_TYPES: { key: InterventionType; label: string; icon: string }[] = [
   { key: 'medication', label: 'Medication', icon: 'medication' },
   { key: 'procedure', label: 'Procedure', icon: 'medical-services' },
-  { key: 'airway', label: 'Airway', icon: 'air' },
-  { key: 'iv_access', label: 'IV Access', icon: 'water-drop' },
-  { key: 'monitoring', label: 'Monitoring', icon: 'monitor-heart' },
+  { key: 'airway', label: 'Airway', icon: 'airline-seat-flat' },
+  { key: 'iv_access', label: 'IV Access', icon: 'opacity' },
+  { key: 'monitoring', label: 'Monitoring', icon: 'monitor' },
   { key: 'other', label: 'Other', icon: 'more-horiz' },
 ];
 
