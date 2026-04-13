@@ -238,7 +238,7 @@ export function AddInterventionScreen() {
                   placeholder="e.g., IV, Oral"
                   placeholderTextColor="#6b7280"
                   value={adminRoute}
-                  onChangeText={setRoute}
+                  onChangeText={setAdminRoute}
                 />
               </View>
             </View>
