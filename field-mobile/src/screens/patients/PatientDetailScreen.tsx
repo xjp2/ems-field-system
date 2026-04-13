@@ -273,9 +273,11 @@ export function PatientDetailScreen() {
                   </View>
                   <View style={styles.interventionContent}>
                     <Text style={styles.interventionName}>{intervention.name}</Text>
-                    {intervention.dosage && (
+                    {(intervention.dosage || intervention.route || intervention.response) && (
                       <Text style={styles.interventionDetails}>
-                        {intervention.dosage} {intervention.route && `• ${intervention.route}`}
+                        {intervention.dosage && `${intervention.dosage} `}
+                        {intervention.route && `• ${intervention.route} `}
+                        {intervention.response && `• ${intervention.response}`}
                       </Text>
                     )}
                   </View>

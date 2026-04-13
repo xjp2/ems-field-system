@@ -47,6 +47,10 @@ const COMMON_PROCEDURES = [
   'Spinal Immobilization',
 ];
 
+// Quick select options
+const ROUTE_OPTIONS = ['IV', 'IM', 'SC', 'Oral', 'Inhalation', 'Topical', 'Sublingual', 'Rectal'];
+const RESPONSE_OPTIONS = ['Improved', 'No Change', 'Deteriorated', 'Resolved', 'Adverse Reaction'];
+
 export function AddInterventionScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -57,11 +61,13 @@ export function AddInterventionScreen() {
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
   const [adminRoute, setAdminRoute] = useState('');
-  const [indication, setIndication] = useState('');
   const [response, setResponse] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
+
+  // Check if dosage is needed (mainly for medications)
+  const needsDosage = selectedType === 'medication' || selectedType === 'iv_access';
 
   const handleSave = async () => {
     if (!selectedType) {
@@ -84,9 +90,8 @@ export function AddInterventionScreen() {
         type: selectedType,
         name: name.trim(),
         dosage: dosage.trim() || undefined,
-        route: adminRoute.trim() || undefined,
-        indication: indication.trim() || undefined,
-        response: response.trim() || undefined,
+        route: adminRoute || undefined,
+        response: response || undefined,
         notes: notes.trim() || undefined,
       });
 
@@ -97,9 +102,8 @@ export function AddInterventionScreen() {
         type: selectedType,
         name: name.trim(),
         dosage: dosage.trim() || undefined,
-        route: adminRoute.trim() || undefined,
-        indication: indication.trim() || undefined,
-        response: response.trim() || undefined,
+        route: adminRoute || undefined,
+        response: response || undefined,
         notes: notes.trim() || undefined,
       });
 
@@ -217,55 +221,101 @@ export function AddInterventionScreen() {
             />
           </View>
 
-          {/* Dosage & Route */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Dosage & Route</Text>
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, styles.flex1, styles.marginRight]}>
-                <Text style={styles.inputLabel}>Dosage</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., 15L/min"
-                  placeholderTextColor="#6b7280"
-                  value={dosage}
-                  onChangeText={setDosage}
-                />
-              </View>
-              <View style={[styles.inputGroup, styles.flex1]}>
-                <Text style={styles.inputLabel}>Route</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g., IV, Oral"
-                  placeholderTextColor="#6b7280"
-                  value={adminRoute}
-                  onChangeText={setAdminRoute}
-                />
-              </View>
+          {/* Dosage - Only for medications/IV */}
+          {needsDosage && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Dosage</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., 15L/min, 10mg, 500ml..."
+                placeholderTextColor="#6b7280"
+                value={dosage}
+                onChangeText={setDosage}
+              />
             </View>
-          </View>
+          )}
 
-          {/* Indication */}
+          {/* Route - Quick Select */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Indication</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Why was this intervention performed?"
-              placeholderTextColor="#6b7280"
-              value={indication}
-              onChangeText={setIndication}
-            />
+            <Text style={styles.sectionLabel}>Route</Text>
+            <View style={styles.quickSelectGrid}>
+              {ROUTE_OPTIONS.map((routeOption) => (
+                <TouchableOpacity
+                  key={routeOption}
+                  style={[
+                    styles.quickSelectChip,
+                    adminRoute === routeOption && styles.quickSelectChipActive,
+                  ]}
+                  onPress={() => setAdminRoute(routeOption)}
+                >
+                  <Text
+                    style={[
+                      styles.quickSelectText,
+                      adminRoute === routeOption && styles.quickSelectTextActive,
+                    ]}
+                  >
+                    {routeOption}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {adminRoute && (
+              <TouchableOpacity 
+                style={styles.clearSelection}
+                onPress={() => setAdminRoute('')}
+              >
+                <Text style={styles.clearSelectionText}>Clear selection</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          {/* Patient Response */}
+          {/* Patient Response - Quick Select */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Patient Response</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="How did the patient respond?"
-              placeholderTextColor="#6b7280"
-              value={response}
-              onChangeText={setResponse}
-            />
+            <View style={styles.quickSelectList}>
+              {RESPONSE_OPTIONS.map((responseOption) => (
+                <TouchableOpacity
+                  key={responseOption}
+                  style={[
+                    styles.responseChip,
+                    response === responseOption && styles.responseChipActive,
+                  ]}
+                  onPress={() => setResponse(responseOption)}
+                >
+                  <MaterialIcons
+                    name={
+                      responseOption === 'Improved'
+                        ? 'trending-up'
+                        : responseOption === 'Deteriorated'
+                        ? 'trending-down'
+                        : responseOption === 'Resolved'
+                        ? 'check-circle'
+                        : responseOption === 'Adverse Reaction'
+                        ? 'warning'
+                        : 'remove'
+                    }
+                    size={18}
+                    color={response === responseOption ? '#fff' : '#6b7280'}
+                  />
+                  <Text
+                    style={[
+                      styles.responseText,
+                      response === responseOption && styles.responseTextActive,
+                    ]}
+                  >
+                    {responseOption}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {response && (
+              <TouchableOpacity 
+                style={styles.clearSelection}
+                onPress={() => setResponse('')}
+              >
+                <Text style={styles.clearSelectionText}>Clear selection</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Notes */}
@@ -403,22 +453,68 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
   },
-  row: {
+  // Quick Select Styles
+  quickSelectGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  inputGroup: {
-    marginBottom: 0,
+  quickSelectChip: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#374151',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
-  flex1: {
+  quickSelectChipActive: {
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
+  },
+  quickSelectText: {
+    color: '#9ca3af',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  quickSelectTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  clearSelection: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  clearSelectionText: {
+    color: '#6b7280',
+    fontSize: 13,
+  },
+  // Response Styles
+  quickSelectList: {
+    gap: 8,
+  },
+  responseChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#374151',
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+  },
+  responseChipActive: {
+    backgroundColor: '#16a34a',
+    borderColor: '#16a34a',
+  },
+  responseText: {
+    color: '#9ca3af',
+    fontSize: 15,
+    fontWeight: '500',
     flex: 1,
   },
-  marginRight: {
-    marginRight: 12,
-  },
-  inputLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginBottom: 8,
+  responseTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   notesInput: {
     height: 100,
