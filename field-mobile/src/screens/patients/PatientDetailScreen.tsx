@@ -272,13 +272,21 @@ export function PatientDetailScreen() {
                     </Text>
                   </View>
                   <View style={styles.interventionContent}>
-                    <Text style={styles.interventionName}>{intervention.name}</Text>
+                    <View style={styles.interventionHeader}>
+                      <Text style={styles.interventionName}>{intervention.name}</Text>
+                      <View style={styles.typeBadge}>
+                        <Text style={styles.typeBadgeText}>{intervention.type}</Text>
+                      </View>
+                    </View>
                     {(intervention.dosage || intervention.route || intervention.response) && (
                       <Text style={styles.interventionDetails}>
                         {intervention.dosage && `${intervention.dosage} `}
                         {intervention.route && `• ${intervention.route} `}
                         {intervention.response && `• ${intervention.response}`}
                       </Text>
+                    )}
+                    {intervention.notes && (
+                      <Text style={styles.interventionNotes}>{intervention.notes}</Text>
                     )}
                   </View>
                 </View>
@@ -599,6 +607,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#9ca3af',
     marginTop: 4,
+  },
+  interventionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  typeBadge: {
+    backgroundColor: '#374151',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  typeBadgeText: {
+    color: '#9ca3af',
+    fontSize: 10,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+  },
+  interventionNotes: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 6,
+    fontStyle: 'italic',
+    lineHeight: 18,
   },
   viewMoreBtn: {
     alignItems: 'center',

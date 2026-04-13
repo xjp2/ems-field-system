@@ -140,11 +140,7 @@ export function AddInterventionScreen() {
           <MaterialIcons name="close" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Add Treatment</Text>
-        <TouchableOpacity onPress={handleSave} disabled={saving}>
-          <Text style={[styles.saveText, saving && styles.saveTextDisabled]}>
-            {saving ? 'SAVING...' : 'SAVE'}
-          </Text>
-        </TouchableOpacity>
+        <View style={{ width: 50 }} />
       </View>
 
       <KeyboardAvoidingView 
@@ -332,8 +328,20 @@ export function AddInterventionScreen() {
             />
           </View>
 
-          <View style={styles.bottomPadding} />
         </ScrollView>
+
+        {/* Bottom Save Button */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity 
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={saving}
+          >
+            <Text style={styles.saveButtonText}>
+              {saving ? 'SAVING...' : 'SAVE TREATMENT'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -520,7 +528,25 @@ const styles = StyleSheet.create({
     height: 100,
     textAlignVertical: 'top',
   },
-  bottomPadding: {
-    height: 32,
+  // Bottom Bar Styles
+  bottomBar: {
+    backgroundColor: '#1a1a1a',
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a2a',
+    padding: 16,
+  },
+  saveButton: {
+    backgroundColor: '#dc2626',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
