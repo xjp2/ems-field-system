@@ -56,7 +56,7 @@ export function AddInterventionScreen() {
   const [selectedType, setSelectedType] = useState<InterventionType | null>(null);
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
-  const [route, setRoute] = useState('');
+  const [adminRoute, setAdminRoute] = useState('');
   const [indication, setIndication] = useState('');
   const [response, setResponse] = useState('');
   const [notes, setNotes] = useState('');
@@ -84,7 +84,7 @@ export function AddInterventionScreen() {
         type: selectedType,
         name: name.trim(),
         dosage: dosage.trim() || undefined,
-        route: route.trim() || undefined,
+        route: adminRoute.trim() || undefined,
         indication: indication.trim() || undefined,
         response: response.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -97,7 +97,7 @@ export function AddInterventionScreen() {
         type: selectedType,
         name: name.trim(),
         dosage: dosage.trim() || undefined,
-        route: route.trim() || undefined,
+        route: adminRoute.trim() || undefined,
         indication: indication.trim() || undefined,
         response: response.trim() || undefined,
         notes: notes.trim() || undefined,
@@ -237,7 +237,7 @@ export function AddInterventionScreen() {
                   style={styles.input}
                   placeholder="e.g., IV, Oral"
                   placeholderTextColor="#6b7280"
-                  value={route}
+                  value={adminRoute}
                   onChangeText={setRoute}
                 />
               </View>
