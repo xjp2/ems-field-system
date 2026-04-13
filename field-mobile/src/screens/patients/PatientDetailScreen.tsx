@@ -307,7 +307,10 @@ export function PatientDetailScreen() {
           
           <TouchableOpacity 
             style={[styles.actionBtn, styles.interventionBtn]}
-            onPress={() => navigation.navigate('AddIntervention', { patientId, incidentId } as never)}
+            onPress={() => {
+              console.log('Navigating to AddIntervention with:', { patientId, incidentId });
+              navigation.navigate('AddIntervention', { patientId, incidentId } as never);
+            }}
           >
             <MaterialIcons name="medication" size={24} color="#fff" />
             <Text style={styles.actionBtnText}>Add Treatment</Text>
