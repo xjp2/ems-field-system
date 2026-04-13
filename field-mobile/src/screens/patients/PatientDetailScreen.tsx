@@ -59,6 +59,82 @@ function getTriageLabel(triage: string): string {
   return labels[triage] || triage.toUpperCase();
 }
 
+// Vital sign alert styling
+function getVitalAlertStyle(type: string, value: number): object {
+  switch (type) {
+    case 'hr':
+      if (value < 50 || value > 120) return { backgroundColor: 'rgba(220, 38, 38, 0.2)', borderColor: '#dc2626', borderWidth: 1 };
+      if (value < 60 || value > 100) return { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#f59e0b', borderWidth: 1 };
+      return {};
+    case 'bp':
+      if (value > 160 || value < 90) return { backgroundColor: 'rgba(220, 38, 38, 0.2)', borderColor: '#dc2626', borderWidth: 1 };
+      if (value > 140 || value < 100) return { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#f59e0b', borderWidth: 1 };
+      return {};
+    case 'spo2':
+      if (value < 90) return { backgroundColor: 'rgba(220, 38, 38, 0.2)', borderColor: '#dc2626', borderWidth: 1 };
+      if (value < 95) return { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#f59e0b', borderWidth: 1 };
+      return {};
+    case 'rr':
+      if (value < 8 || value > 30) return { backgroundColor: 'rgba(220, 38, 38, 0.2)', borderColor: '#dc2626', borderWidth: 1 };
+      if (value < 12 || value > 20) return { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#f59e0b', borderWidth: 1 };
+      return {};
+    case 'gcs':
+      if (value < 9) return { backgroundColor: 'rgba(220, 38, 38, 0.2)', borderColor: '#dc2626', borderWidth: 1 };
+      if (value < 13) return { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#f59e0b', borderWidth: 1 };
+      return {};
+    default:
+      return {};
+  }
+}
+
+// Intervention type colors and icons
+function getInterventionColor(type: string): string {
+  const colors: Record<string, string> = {
+    medication: '#3b82f6',
+    procedure: '#8b5cf6',
+    airway: '#dc2626',
+    iv_access: '#06b6d4',
+    monitoring: '#10b981',
+    other: '#6b7280',
+  };
+  return colors[type] || '#6b7280';
+}
+
+function getInterventionIcon(type: string): string {
+  const icons: Record<string, string> = {
+    medication: 'medication',
+    procedure: 'medical-services',
+    airway: 'airline-seat-flat',
+    iv_access: 'opacity',
+    monitoring: 'monitor',
+    other: 'more-horiz',
+  };
+  return icons[type] || 'help';
+}
+
+// Patient response colors and icons
+function getResponseColor(response: string): string {
+  const colors: Record<string, string> = {
+    'Improved': '#16a34a',
+    'No Change': '#6b7280',
+    'Deteriorated': '#dc2626',
+    'Resolved': '#3b82f6',
+    'Adverse Reaction': '#f59e0b',
+  };
+  return colors[response] || '#6b7280';
+}
+
+function getResponseIcon(response: string): string {
+  const icons: Record<string, string> = {
+    'Improved': 'trending-up',
+    'No Change': 'remove',
+    'Deteriorated': 'trending-down',
+    'Resolved': 'check-circle',
+    'Adverse Reaction': 'warning',
+  };
+  return icons[response] || 'help';
+}
+
 export function PatientDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -198,109 +274,162 @@ export function PatientDetailScreen() {
           </View>
         )}
 
-        {/* LATEST VITALS - If available */}
-        {latestVital && (
+        {/* ALL VITALS */}
+        {vitals.length > 0 && (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <MaterialIcons name="favorite" size={20} color="#dc2626" />
-              <Text style={styles.sectionTitle}>Latest Vitals</Text>
-              <Text style={styles.vitalsTime}>
-                {new Date(latestVital.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
+              <Text style={styles.sectionTitle}>Vitals History</Text>
+              <Text style={styles.vitalsTime}>{vitals.length} recordings</Text>
             </View>
             
-            <View style={styles.vitalsGrid}>
-              {latestVital.heart_rate && (
-                <View style={styles.vitalItem}>
-                  <Text style={styles.vitalValue}>{latestVital.heart_rate}</Text>
-                  <Text style={styles.vitalUnit}>BPM</Text>
-                  <Text style={styles.vitalLabel}>Heart Rate</Text>
-                </View>
-              )}
-              {latestVital.blood_pressure_systolic && (
-                <View style={styles.vitalItem}>
-                  <Text style={styles.vitalValue}>
-                    {latestVital.blood_pressure_systolic}/{latestVital.blood_pressure_diastolic || '-'}
+            {vitals.map((vital, index) => (
+              <View key={vital.id} style={styles.vitalRecord}>
+                <View style={styles.vitalRecordHeader}>
+                  <Text style={styles.vitalRecordTime}>
+                    {new Date(vital.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
-                  <Text style={styles.vitalUnit}>mmHg</Text>
-                  <Text style={styles.vitalLabel}>Blood Pressure</Text>
+                  {index === 0 && (
+                    <View style={styles.latestBadge}>
+                      <Text style={styles.latestBadgeText}>LATEST</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-              {latestVital.oxygen_saturation && (
-                <View style={styles.vitalItem}>
-                  <Text style={styles.vitalValue}>{latestVital.oxygen_saturation}%</Text>
-                  <Text style={styles.vitalUnit}>SpO2</Text>
-                  <Text style={styles.vitalLabel}>Oxygen Sat</Text>
+                
+                <View style={styles.vitalsGrid}>
+                  {vital.heart_rate && (
+                    <View style={[styles.vitalItem, getVitalAlertStyle('hr', vital.heart_rate)]}>
+                      <Text style={styles.vitalValue}>{vital.heart_rate}</Text>
+                      <Text style={styles.vitalUnit}>BPM</Text>
+                      <Text style={styles.vitalLabel}>Heart Rate</Text>
+                    </View>
+                  )}
+                  {vital.blood_pressure_systolic && (
+                    <View style={[styles.vitalItem, getVitalAlertStyle('bp', vital.blood_pressure_systolic)]}>
+                      <Text style={styles.vitalValue}>
+                        {vital.blood_pressure_systolic}/{vital.blood_pressure_diastolic || '-'}
+                      </Text>
+                      <Text style={styles.vitalUnit}>mmHg</Text>
+                      <Text style={styles.vitalLabel}>BP</Text>
+                    </View>
+                  )}
+                  {vital.oxygen_saturation && (
+                    <View style={[styles.vitalItem, getVitalAlertStyle('spo2', vital.oxygen_saturation)]}>
+                      <Text style={styles.vitalValue}>{vital.oxygen_saturation}%</Text>
+                      <Text style={styles.vitalUnit}>SpO2</Text>
+                      <Text style={styles.vitalLabel}>Oxygen</Text>
+                    </View>
+                  )}
+                  {vital.respiratory_rate && (
+                    <View style={[styles.vitalItem, getVitalAlertStyle('rr', vital.respiratory_rate)]}>
+                      <Text style={styles.vitalValue}>{vital.respiratory_rate}</Text>
+                      <Text style={styles.vitalUnit}>rpm</Text>
+                      <Text style={styles.vitalLabel}>Resp</Text>
+                    </View>
+                  )}
+                  {vital.temperature && (
+                    <View style={styles.vitalItem}>
+                      <Text style={styles.vitalValue}>{vital.temperature}°</Text>
+                      <Text style={styles.vitalUnit}>°C</Text>
+                      <Text style={styles.vitalLabel}>Temp</Text>
+                    </View>
+                  )}
+                  {vital.gcs_total && (
+                    <View style={[styles.vitalItem, getVitalAlertStyle('gcs', vital.gcs_total)]}>
+                      <Text style={styles.vitalValue}>{vital.gcs_total}</Text>
+                      <Text style={styles.vitalUnit}>/15</Text>
+                      <Text style={styles.vitalLabel}>GCS</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-              {latestVital.respiratory_rate && (
-                <View style={styles.vitalItem}>
-                  <Text style={styles.vitalValue}>{latestVital.respiratory_rate}</Text>
-                  <Text style={styles.vitalUnit}>rpm</Text>
-                  <Text style={styles.vitalLabel}>Respiratory</Text>
-                </View>
-              )}
-            </View>
-            
-            <TouchableOpacity 
-              style={styles.viewAllVitalsBtn}
-              onPress={() => navigation.navigate('VitalsHistory', { patientId } as never)}
-            >
-              <Text style={styles.viewAllVitalsText}>View All Vitals ({vitals.length})</Text>
-              <MaterialIcons name="arrow-forward" size={16} color="#dc2626" />
-            </TouchableOpacity>
+                
+                {vital.notes && (
+                  <Text style={styles.vitalNotes}>{vital.notes}</Text>
+                )}
+                
+                {index < vitals.length - 1 && <View style={styles.vitalDivider} />}
+              </View>
+            ))}
           </View>
         )}
 
-        {/* INTERVENTIONS */}
+        {/* INTERVENTIONS - Complete Timeline */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <MaterialIcons name="medical-services" size={20} color="#dc2626" />
-            <Text style={styles.sectionTitle}>Interventions</Text>
+            <Text style={styles.sectionTitle}>Treatment Timeline</Text>
             <Text style={styles.interventionCount}>{interventions.length}</Text>
           </View>
           
           {interventions.length === 0 ? (
             <Text style={styles.emptyText}>No interventions recorded</Text>
           ) : (
-            <View style={styles.interventionsList}>
-              {interventions.slice(0, 3).map((intervention) => (
-                <View key={intervention.id} style={styles.interventionItem}>
-                  <View style={styles.interventionTime}>
-                    <Text style={styles.interventionTimeText}>
-                      {new Date(intervention.performed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
+            <View style={styles.timelineContainer}>
+              {interventions.map((intervention, index) => (
+                <View key={intervention.id} style={styles.timelineItem}>
+                  {/* Timeline line */}
+                  {index < interventions.length - 1 && (
+                    <View style={styles.timelineLine} />
+                  )}
+                  
+                  {/* Timeline dot */}
+                  <View style={[styles.timelineDot, { backgroundColor: getInterventionColor(intervention.type) }]}>
+                    <MaterialIcons 
+                      name={getInterventionIcon(intervention.type) as any} 
+                      size={14} 
+                      color="#fff" 
+                    />
                   </View>
-                  <View style={styles.interventionContent}>
-                    <View style={styles.interventionHeader}>
-                      <Text style={styles.interventionName}>{intervention.name}</Text>
-                      <View style={styles.typeBadge}>
-                        <Text style={styles.typeBadgeText}>{intervention.type}</Text>
+                  
+                  {/* Content */}
+                  <View style={styles.timelineContent}>
+                    <View style={styles.timelineHeader}>
+                      <Text style={styles.timelineTime}>
+                        {new Date(intervention.performed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                      <View style={[styles.typeBadge, { backgroundColor: `${getInterventionColor(intervention.type)}30` }]}>
+                        <Text style={[styles.typeBadgeText, { color: getInterventionColor(intervention.type) }]}>
+                          {intervention.type}
+                        </Text>
                       </View>
                     </View>
-                    {(intervention.dosage || intervention.route || intervention.response) && (
-                      <Text style={styles.interventionDetails}>
-                        {intervention.dosage && `${intervention.dosage} `}
-                        {intervention.route && `• ${intervention.route} `}
-                        {intervention.response && `• ${intervention.response}`}
-                      </Text>
+                    
+                    <Text style={styles.interventionName}>{intervention.name}</Text>
+                    
+                    {(intervention.dosage || intervention.route) && (
+                      <View style={styles.interventionMeta}>
+                        {intervention.dosage && (
+                          <View style={styles.metaBadge}>
+                            <MaterialIcons name="medication" size={12} color="#9ca3af" />
+                            <Text style={styles.metaText}>{intervention.dosage}</Text>
+                          </View>
+                        )}
+                        {intervention.route && (
+                          <View style={styles.metaBadge}>
+                            <MaterialIcons name="route" size={12} color="#9ca3af" />
+                            <Text style={styles.metaText}>{intervention.route}</Text>
+                          </View>
+                        )}
+                      </View>
                     )}
+                    
+                    {intervention.response && (
+                      <View style={[styles.responseBadge, { backgroundColor: getResponseColor(intervention.response) }]}>
+                        <MaterialIcons 
+                          name={getResponseIcon(intervention.response) as any} 
+                          size={14} 
+                          color="#fff" 
+                        />
+                        <Text style={styles.responseBadgeText}>{intervention.response}</Text>
+                      </View>
+                    )}
+                    
                     {intervention.notes && (
                       <Text style={styles.interventionNotes}>{intervention.notes}</Text>
                     )}
                   </View>
                 </View>
               ))}
-              {interventions.length > 3 && (
-                <TouchableOpacity 
-                  style={styles.viewMoreBtn}
-                  onPress={() => navigation.navigate('InterventionsHistory', { patientId } as never)}
-                >
-                  <Text style={styles.viewMoreText}>
-                    +{interventions.length - 3} more interventions
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           )}
         </View>
@@ -641,6 +770,119 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontSize: 14,
     fontWeight: '500',
+  },
+  // TIMELINE STYLES
+  timelineContainer: {
+    gap: 0,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    paddingBottom: 20,
+    position: 'relative',
+  },
+  timelineLine: {
+    position: 'absolute',
+    left: 15,
+    top: 30,
+    width: 2,
+    height: '100%',
+    backgroundColor: '#374151',
+  },
+  timelineDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    zIndex: 1,
+  },
+  timelineContent: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+    borderRadius: 12,
+    padding: 12,
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  timelineTime: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  interventionMeta: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    gap: 4,
+  },
+  metaText: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  responseBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    gap: 4,
+    marginTop: 8,
+  },
+  responseBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  // VITALS HISTORY STYLES
+  vitalRecord: {
+    marginBottom: 16,
+  },
+  vitalRecordHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  vitalRecordTime: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  latestBadge: {
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  latestBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  vitalDivider: {
+    height: 1,
+    backgroundColor: '#2a2a2a',
+    marginTop: 16,
+  },
+  vitalNotes: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
   // ACTION BUTTONS
   actionButtons: {
