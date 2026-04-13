@@ -12,6 +12,8 @@ import { NewIncidentScreen } from '../screens/incidents/NewIncidentScreen';
 import { IncidentDetailScreen } from '../screens/incidents/IncidentDetailScreen';
 import { NewPatientScreen } from '../screens/patients/NewPatientScreen';
 import { PatientDetailScreen } from '../screens/patients/PatientDetailScreen';
+import { AddVitalScreen } from '../screens/patients/AddVitalScreen';
+import { AddInterventionScreen } from '../screens/patients/AddInterventionScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -84,6 +86,20 @@ export function MainNavigator() {
       <Stack.Screen
         name="PatientDetail"
         component={PatientDetailScreen}
+      />
+      <Stack.Screen
+        name="AddVital"
+        component={AddVitalScreen}
+        options={{
+          animation: 'slide_from_bottom',
+        }}
+      />
+      <Stack.Screen
+        name="AddIntervention"
+        component={AddInterventionScreen}
+        options={{
+          animation: 'slide_from_bottom',
+        }}
       />
     </Stack.Navigator>
   );
