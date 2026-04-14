@@ -10,6 +10,7 @@ import { AppNavigator } from './src/navigation/AppNavigator';
 import { initializeDatabase } from './src/database/db-schema';
 import { useSyncStore } from './src/stores/sync.store';
 import { startRealtimeSubscriptions, stopRealtimeSubscriptions } from './src/services/realtime.service';
+import { pullIncidents } from './src/services/pull.service';
 
 // Initialize database on app start
 let dbInitialized = false;
@@ -29,15 +30,19 @@ export default function App() {
   useEffect(() => {
     initDb();
     updateStatus();
+    // Pull fresh incidents from server on app start (catches deletions missed while app was closed)
+    pullIncidents().catch(err => console.log('Initial pull failed:', err.message));
   }, []);
 
   // Handle app state changes (background/foreground)
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        // App came to foreground - sync and restart realtime
+        // App came to foreground - sync up, pull down, and restart realtime
         sync();
         updateStatus();
+        // Pull fresh data from server to catch any deletions/changes while app was in background
+        pullIncidents().catch(err => console.log('Foreground pull failed:', err.message));
         startRealtimeSubscriptions();
       } else if (nextAppState === 'background') {
         // App went to background - stop realtime to save battery

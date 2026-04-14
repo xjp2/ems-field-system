@@ -3,6 +3,7 @@ import { Incident, Patient, Vital, Intervention, Photo } from '../types/database
 import { executeSql, getOne } from '../database/db-connection';
 import { getIncidentById, getAllIncidents } from '../database/incidents-db';
 import { getPhotosByIncident, createPhoto, deletePhoto } from '../database/photos-db';
+import { realtimeEvents } from './realtime.service';
 
 /**
  * Pull all incidents from server and upsert to local SQLite
@@ -38,6 +39,11 @@ export async function pullIncidents(): Promise<void> {
 
   const deletedCount = syncedLocalIncidents.filter(inc => !serverIncidentIds.has(inc.id)).length;
   console.log(`Pulled ${incidents.length} incidents, deleted ${deletedCount} removed`);
+
+  // Notify screens to reload if any changes were made
+  if (deletedCount > 0) {
+    realtimeEvents.emit('incidents:changed');
+  }
 }
 
 /**
