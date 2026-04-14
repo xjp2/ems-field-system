@@ -1,11 +1,12 @@
 import { api, endpoints } from '../config/api';
 import { Incident, Patient, Vital, Intervention, Photo } from '../types/database';
 import { executeSql, getOne } from '../database/db-connection';
-import { getIncidentById } from '../database/incidents-db';
+import { getIncidentById, getAllIncidents } from '../database/incidents-db';
 import { getPhotosByIncident, createPhoto, deletePhoto } from '../database/photos-db';
 
 /**
  * Pull all incidents from server and upsert to local SQLite
+ * Also deletes local synced incidents that no longer exist on server
  */
 export async function pullIncidents(): Promise<void> {
   console.log('Pulling incidents from server...');
@@ -20,7 +21,23 @@ export async function pullIncidents(): Promise<void> {
     await upsertIncident(serverIncident);
   }
 
-  console.log(`Pulled ${incidents.length} incidents`);
+  // Delete local synced incidents that no longer exist on server
+  const localIncidents = await getAllIncidents();
+  const serverIncidentIds = new Set(incidents.map((inc: any) => inc.id));
+  const syncedLocalIncidents = localIncidents.filter((inc) => inc.is_synced);
+
+  for (const localIncident of syncedLocalIncidents) {
+    if (!serverIncidentIds.has(localIncident.id)) {
+      console.log('Deleting local incident removed from server:', localIncident.id);
+      await safeExecute(
+        'DELETE FROM incidents WHERE id = ?',
+        [localIncident.id]
+      );
+    }
+  }
+
+  const deletedCount = syncedLocalIncidents.filter(inc => !serverIncidentIds.has(inc.id)).length;
+  console.log(`Pulled ${incidents.length} incidents, deleted ${deletedCount} removed`);
 }
 
 /**
