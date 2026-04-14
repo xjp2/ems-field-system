@@ -11,24 +11,29 @@ import {
   Platform,
   Modal,
   Dimensions,
+  Image,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
+import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker } from 'react-native-maps';
 import { v4 as uuidv4 } from 'uuid';
 
 import { createIncident } from '../../database/incidents-db';
+import { createPhoto } from '../../database/photos-db';
 import { addToSyncQueue } from '../../database/sync-queue';
 import { useSyncStore } from '../../stores/sync.store';
 import { IncidentStatus, PriorityLevel } from '../../types/database';
 
-const SITUATION_TYPES = [
+import type { MaterialIcons as MaterialIconsType } from '@expo/vector-icons';
+const SITUATION_TYPES: { icon: React.ComponentProps<typeof MaterialIconsType>['name']; label: string; value: string }[] = [
   { icon: 'car-crash', label: 'Vehicle Accident', value: 'Vehicle Accident' },
   { icon: 'personal-injury', label: 'Injury / Trauma', value: 'Injury / Trauma' },
-  { icon: 'ecg-heart', label: 'Medical Emergency', value: 'Medical Emergency' },
+  { icon: 'favorite', label: 'Medical Emergency', value: 'Medical Emergency' },
   { icon: 'local-fire-department', label: 'Fire / Burns', value: 'Fire / Burns' },
 ];
 
@@ -52,6 +57,9 @@ export function NewIncidentScreen() {
     latitudeDelta: 0.0922,
     longitudeDelta: 0.0421,
   });
+  const [photos, setPhotos] = useState<{ uri: string; caption: string }[]>([]);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   
   const { sync } = useSyncStore();
 
@@ -171,6 +179,63 @@ export function NewIncidentScreen() {
     setIsRecording(true);
   };
 
+  // Photo handling functions
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Camera permission is needed to take photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setPhotos([...photos, { uri: result.assets[0].uri, caption: '' }]);
+    }
+  };
+
+  const selectPhotoFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Photo library permission is needed');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setPhotos([...photos, { uri: result.assets[0].uri, caption: '' }]);
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    const newPhotos = [...photos];
+    newPhotos.splice(index, 1);
+    setPhotos(newPhotos);
+    setPhotoModalVisible(false);
+  };
+
+  const updatePhotoCaption = (index: number, caption: string) => {
+    const newPhotos = [...photos];
+    newPhotos[index].caption = caption;
+    setPhotos(newPhotos);
+  };
+
+  const openPhotoModal = (index: number) => {
+    setSelectedPhotoIndex(index);
+    setPhotoModalVisible(true);
+  };
+
   const openMapSelector = () => {
     // Set map to current location if available
     if (latitude && longitude) {
@@ -287,6 +352,26 @@ export function NewIncidentScreen() {
       }).catch(err => {
         console.log('Auto-sync failed:', err.message);
       });
+
+      // Save photos if any
+      if (photos.length > 0) {
+        for (const photo of photos) {
+          const photoRecord = await createPhoto({
+            incident_id: incident.id,
+            uri: photo.uri,
+            caption: photo.caption,
+            taken_at: new Date().toISOString(),
+          });
+
+          // Add photo to sync queue
+          await addToSyncQueue('photos', photoRecord.id, 'CREATE', {
+            incident_id: incident.id,
+            uri: photo.uri,
+            caption: photo.caption,
+            taken_at: photoRecord.taken_at,
+          });
+        }
+      }
 
       // Reset navigation stack to Main (Home) and navigate to IncidentDetail
       // This ensures back button from IncidentDetail goes to Home, not the form
@@ -483,6 +568,46 @@ export function NewIncidentScreen() {
           />
         </View>
 
+        {/* Photos Section */}
+        <View style={styles.section}>
+          <View style={styles.photosHeader}>
+            <Text style={styles.sectionLabel}>Scene Photos ({photos.length})</Text>
+            <View style={styles.photoButtons}>
+              <TouchableOpacity style={styles.photoButton} onPress={takePhoto}>
+                <MaterialIcons name="camera-alt" size={20} color="#fff" />
+                <Text style={styles.photoButtonText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.photoButton} onPress={selectPhotoFromLibrary}>
+                <MaterialIcons name="photo-library" size={20} color="#fff" />
+                <Text style={styles.photoButtonText}>Gallery</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          
+          {photos.length > 0 && (
+            <FlatList
+              data={photos}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(_, index) => index.toString()}
+              renderItem={({ item, index }) => (
+                <TouchableOpacity 
+                  style={styles.photoThumbnail}
+                  onPress={() => openPhotoModal(index)}
+                >
+                  <Image source={{ uri: item.uri }} style={styles.thumbnailImage} />
+                  {item.caption ? (
+                    <View style={styles.captionOverlay}>
+                      <Text style={styles.captionText} numberOfLines={1}>{item.caption}</Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.photosList}
+            />
+          )}
+        </View>
+
         {/* Create Button */}
         <TouchableOpacity
           style={[styles.createButton, creating && styles.createButtonDisabled]}
@@ -555,6 +680,58 @@ export function NewIncidentScreen() {
             </View>
           </SafeAreaView>
         </View>
+      </Modal>
+
+      {/* Photo Modal */}
+      <Modal
+        visible={photoModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setPhotoModalVisible(false)}
+      >
+        <SafeAreaView style={styles.photoModalContainer}>
+          {/* Header */}
+          <View style={styles.photoModalHeader}>
+            <TouchableOpacity onPress={() => setPhotoModalVisible(false)}>
+              <MaterialIcons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.photoModalTitle}>
+              Photo {selectedPhotoIndex !== null ? selectedPhotoIndex + 1 : ''} of {photos.length}
+            </Text>
+            <TouchableOpacity 
+              onPress={() => selectedPhotoIndex !== null && removePhoto(selectedPhotoIndex)}
+            >
+              <MaterialIcons name="delete" size={24} color="#dc2626" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Photo */}
+          {selectedPhotoIndex !== null && (
+            <>
+              <View style={styles.photoModalImageContainer}>
+                <Image 
+                  source={{ uri: photos[selectedPhotoIndex].uri }} 
+                  style={styles.photoModalImage}
+                  resizeMode="contain"
+                />
+              </View>
+
+              {/* Caption Input */}
+              <View style={styles.photoModalFooter}>
+                <Text style={styles.captionLabel}>Caption</Text>
+                <TextInput
+                  style={styles.captionInput}
+                  placeholder="Add a description..."
+                  placeholderTextColor="#6b7280"
+                  value={photos[selectedPhotoIndex].caption}
+                  onChangeText={(text) => updatePhotoCaption(selectedPhotoIndex, text)}
+                  multiline
+                  numberOfLines={2}
+                />
+              </View>
+            </>
+          )}
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -851,5 +1028,110 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  
+  // Photos Section
+  photosHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  photoButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  photoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#374151',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  photoButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  photosList: {
+    paddingVertical: 4,
+  },
+  photoThumbnail: {
+    width: 100,
+    height: 100,
+    borderRadius: 8,
+    marginRight: 8,
+    backgroundColor: '#0f0f0f',
+    overflow: 'hidden',
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
+  },
+  captionOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 4,
+  },
+  captionText: {
+    color: '#fff',
+    fontSize: 10,
+  },
+  
+  // Photo Modal
+  photoModalContainer: {
+    flex: 1,
+    backgroundColor: '#0f0f0f',
+  },
+  photoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  photoModalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  photoModalImageContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  photoModalImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoModalFooter: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a2a',
+    backgroundColor: '#1a1a1a',
+  },
+  captionLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#9ca3af',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  captionInput: {
+    backgroundColor: '#0f0f0f',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 8,
+    padding: 12,
+    color: '#fff',
+    fontSize: 14,
+    textAlignVertical: 'top',
   },
 });

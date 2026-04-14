@@ -136,6 +136,22 @@ export async function initializeDatabase(): Promise<void> {
       )
     `);
 
+    // Photos table
+    await db.runAsync(`
+      CREATE TABLE IF NOT EXISTS photos (
+        id TEXT PRIMARY KEY NOT NULL,
+        server_id TEXT,
+        incident_id TEXT NOT NULL,
+        server_incident_id TEXT,
+        uri TEXT NOT NULL,
+        caption TEXT,
+        taken_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        is_synced INTEGER DEFAULT 0,
+        FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
+      )
+    `);
+
     // Create indexes
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_incidents_sync ON incidents(is_synced)`);
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status)`);
@@ -143,6 +159,7 @@ export async function initializeDatabase(): Promise<void> {
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_vitals_patient ON vitals(patient_id)`);
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_interventions_patient ON interventions(patient_id)`);
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_sync_queue_retry ON sync_queue(retry_count)`);
+    await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_photos_incident ON photos(incident_id)`);
   });
 
   console.log('Database initialized successfully');
@@ -158,6 +175,7 @@ export async function resetDatabase(): Promise<void> {
     await db.runAsync('DROP TABLE IF EXISTS interventions');
     await db.runAsync('DROP TABLE IF EXISTS vitals');
     await db.runAsync('DROP TABLE IF EXISTS patients');
+    await db.runAsync('DROP TABLE IF EXISTS photos');
     await db.runAsync('DROP TABLE IF EXISTS incidents');
     await db.runAsync('DROP TABLE IF EXISTS sync_queue');
   });

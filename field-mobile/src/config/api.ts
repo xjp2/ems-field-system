@@ -54,11 +54,16 @@ export const endpoints = {
   },
   vitals: {
     create: () => '/vitals',
+    update: (id: string) => `/vitals/${id}`,
     byPatient: (patientId: string) => `/vitals/patient/${patientId}`,
   },
   interventions: {
     create: () => '/interventions',
     byPatient: (patientId: string) => `/interventions/patient/${patientId}`,
+  },
+  photos: {
+    create: () => '/photos',
+    byIncident: (incidentId: string) => `/photos/incident/${incidentId}`,
   },
 };
 

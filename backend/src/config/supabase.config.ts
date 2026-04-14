@@ -122,6 +122,17 @@ export interface Intervention {
   created_by?: string;
 }
 
+export interface Photo {
+  id: string;
+  incident_id: string;
+  storage_path: string;
+  public_url?: string;
+  caption?: string;
+  taken_at: string;
+  created_at: string;
+  created_by?: string;
+}
+
 export interface UserProfile {
   id: string;
   email: string;

@@ -11,8 +11,9 @@ import {
   getIncidentServerId,
 } from '../database/incidents-db';
 import { markPatientSynced, getPatientServerId } from '../database/patients-db';
-import { markVitalSynced } from '../database/vitals-db';
+import { markVitalSynced, getVitalById } from '../database/vitals-db';
 import { markInterventionSynced } from '../database/interventions-db';
+import { markPhotoAsSynced } from '../database/photos-db';
 import { SyncResult, SyncQueueEntry } from '../types/database';
 
 const MAX_RETRIES = 5;
@@ -45,10 +46,10 @@ export async function syncWithServer(): Promise<SyncResult> {
   
   console.log(`Processing ${operations.length} sync operations...`);
   
-  // Sort operations: incidents first, then patients, vitals, interventions
+  // Sort operations: incidents first, then patients, vitals, interventions, photos
   // This ensures parent records sync before children
   const sortedOperations = operations.sort((a, b) => {
-    const order = { incidents: 0, patients: 1, vitals: 2, interventions: 3 };
+    const order = { incidents: 0, patients: 1, vitals: 2, interventions: 3, photos: 4 };
     return (order[a.table_name as keyof typeof order] || 99) - 
            (order[b.table_name as keyof typeof order] || 99);
   });
@@ -100,6 +101,9 @@ async function processOperation(operation: SyncQueueEntry): Promise<void> {
       break;
     case 'interventions':
       await syncIntervention(operation, payload);
+      break;
+    case 'photos':
+      await syncPhoto(operation, payload);
       break;
     default:
       throw new Error(`Unknown table: ${operation.table_name}`);
@@ -220,6 +224,30 @@ async function syncVital(
     
     // Mark as synced with server_id
     await markVitalSynced(operation.local_id, created.id);
+  } else if (operation.operation === 'UPDATE') {
+    // Get the server_id for this vital
+    const vital = await getVitalById(operation.local_id);
+    if (!vital?.server_id) {
+      throw new Error(`Vital ${operation.local_id} not yet synced to server. Will retry after vital syncs.`);
+    }
+    
+    // Look up the server_id for the patient
+    const serverPatientId = await getPatientServerId(payload.patient_id);
+    if (!serverPatientId) {
+      throw new Error(`Patient ${payload.patient_id} not yet synced to server. Will retry after patient syncs.`);
+    }
+    
+    // Replace local patient_id with server patient_id
+    const vitalPayload = {
+      ...payload,
+      patient_id: serverPatientId,
+    };
+    
+    console.log('Updating vital with server id:', vital.server_id);
+    await api.patch(endpoints.vitals.update(vital.server_id), vitalPayload);
+    
+    // Mark as synced
+    await markVitalSynced(operation.local_id, vital.server_id);
   }
 }
 
@@ -248,6 +276,61 @@ async function syncIntervention(
     
     // Mark as synced with server_id
     await markInterventionSynced(operation.local_id, created.id);
+  }
+}
+
+/**
+ * Sync photo to server
+ */
+async function syncPhoto(
+  operation: SyncQueueEntry,
+  payload: any
+): Promise<void> {
+  if (operation.operation === 'CREATE') {
+    // Look up the server_id for the incident
+    const serverIncidentId = await getIncidentServerId(payload.incident_id);
+    if (!serverIncidentId) {
+      throw new Error(`Incident ${payload.incident_id} not yet synced to server. Will retry after incident syncs.`);
+    }
+    
+    // Replace local incident_id with server incident_id
+    const photoPayload = {
+      ...payload,
+      incident_id: serverIncidentId,
+    };
+    
+    console.log('Creating photo with server incident_id:', serverIncidentId);
+    
+    // For photos, we need to upload the file
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append('incident_id', serverIncidentId);
+    if (payload.caption) {
+      formData.append('caption', payload.caption);
+    }
+    formData.append('taken_at', payload.taken_at);
+    
+    // Append the file - uri should be a local file path
+    const uri = payload.uri;
+    const filename = uri.split('/').pop() || 'photo.jpg';
+    const match = /\.([a-zA-Z]+)$/.exec(filename);
+    const type = match ? `image/${match[1].toLowerCase()}` : 'image/jpeg';
+    
+    formData.append('file', {
+      uri,
+      name: filename,
+      type,
+    } as any);
+    
+    const { data: created } = await api.post(endpoints.photos.create(), formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      transformRequest: (data) => data,
+    });
+    
+    // Mark as synced with server_id and update URI to public URL
+    await markPhotoAsSynced(operation.local_id, created.id, created.public_url);
   }
 }
 

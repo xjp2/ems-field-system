@@ -8,6 +8,7 @@ import { IncidentsModule } from './incidents/incidents.module';
 import { PatientsModule } from './patients/patients.module';
 import { VitalsModule } from './vitals/vitals.module';
 import { InterventionsModule } from './interventions/interventions.module';
+import { PhotosModule } from './photos/photos.module';
 import { RealtimeModule } from './realtime/realtime.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { RealtimeModule } from './realtime/realtime.module';
     PatientsModule,
     VitalsModule,
     InterventionsModule,
+    PhotosModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

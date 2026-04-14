@@ -176,11 +176,29 @@ export interface Intervention {
 }
 
 /**
+ * Photo entity for incident photos
+ */
+export interface Photo {
+  id: string;
+  is_synced: boolean;
+  server_id?: string;
+  
+  incident_id: string;
+  server_incident_id?: string;
+  
+  uri: string;              // Local file URI
+  caption?: string;
+  taken_at: string;         // When photo was taken
+  
+  created_at: string;
+}
+
+/**
  * Sync queue entry for pending operations
  */
 export interface SyncQueueEntry {
   id: string;
-  table_name: 'incidents' | 'patients' | 'vitals' | 'interventions';
+  table_name: 'incidents' | 'patients' | 'vitals' | 'interventions' | 'photos';
   local_id: string;
   server_id?: string;
   operation: 'CREATE' | 'UPDATE' | 'DELETE';

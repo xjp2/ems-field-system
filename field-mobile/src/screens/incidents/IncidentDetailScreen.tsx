@@ -7,43 +7,92 @@ import {
   TouchableOpacity,
   Linking,
   Platform,
+  Modal,
+  Alert,
+  TextInput,
+  KeyboardAvoidingView,
+  Keyboard,
+  TouchableWithoutFeedback,
+  Image,
+  FlatList,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker } from 'react-native-maps';
+import * as ImagePicker from 'expo-image-picker';
+import { v4 as uuidv4 } from 'uuid';
 
-import { Incident, Patient } from '../../types/database';
-import { getIncidentById } from '../../database/incidents-db';
+import { Incident, Patient, IncidentStatus, Photo } from '../../types/database';
+import { getIncidentById, updateIncident, getIncidentServerId } from '../../database/incidents-db';
 import { getPatientsByIncident, getTriageCounts } from '../../database/patients-db';
+import { getPhotosByIncident, createPhoto } from '../../database/photos-db';
+import { addToSyncQueue } from '../../database/sync-queue';
+import { useSyncStore } from '../../stores/sync.store';
 
-const STATUS_FLOW = [
-  { key: 'on_scene', label: 'ON SCENE', icon: 'location-on' },
-  { key: 'assessing', label: 'ASSESSING', icon: 'stethoscope' },
-  { key: 'treating', label: 'TREATING', icon: 'medication' },
-  { key: 'transporting', label: 'TRANSPORTING', icon: 'local-shipping' },
-  { key: 'arrived', label: 'ARRIVED', icon: 'local-hospital' },
-  { key: 'closed', label: 'CLOSED', icon: 'check-circle' },
+import type { MaterialIcons as MaterialIconsType } from '@expo/vector-icons';
+const STATUS_FLOW: { key: IncidentStatus; label: string; icon: React.ComponentProps<typeof MaterialIconsType>['name']; timeField: keyof Incident }[] = [
+  { key: 'on_scene', label: 'On Scene', icon: 'location-on', timeField: 'on_scene_at' },
+  { key: 'transporting', label: 'Transport', icon: 'local-shipping', timeField: 'transporting_at' },
+  { key: 'arrived', label: 'Arrived', icon: 'local-hospital', timeField: 'arrived_at' },
+  { key: 'closed', label: 'Closed', icon: 'check-circle', timeField: 'closed_at' },
 ];
+
+// Get status timestamp from incident
+// on_scene uses created_at as its time
+function getStatusTime(incident: Incident, status: IncidentStatus): string | null {
+  if (status === 'on_scene') {
+    return incident.created_at;
+  }
+  const field = STATUS_FLOW.find(s => s.key === status)?.timeField;
+  if (!field) return null;
+  const time = incident[field] as string | undefined;
+  return time || null;
+}
+
+// Format time difference between two timestamps
+function formatTimeDiff(start: string, end: string): string {
+  const diffMs = new Date(end).getTime() - new Date(start).getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const remainingMins = diffMins % 60;
+  
+  if (diffHours > 0) {
+    return `${diffHours}h ${remainingMins}m`;
+  }
+  return `${diffMins}m`;
+}
 
 export function IncidentDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { incidentId } = route.params as { incidentId: string };
+  const { sync } = useSyncStore();
   
   const [incident, setIncident] = useState<Incident | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [triageCounts, setTriageCounts] = useState({ red: 0, yellow: 0, green: 0, black: 0 });
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [showSituationModal, setShowSituationModal] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
+  const [editingNotes, setEditingNotes] = useState('');
+  const [editingSituation, setEditingSituation] = useState('');
 
   const loadData = useCallback(async () => {
-    const [inc, pts, counts] = await Promise.all([
+    const [inc, pts, counts, pics] = await Promise.all([
       getIncidentById(incidentId),
       getPatientsByIncident(incidentId),
       getTriageCounts(incidentId),
+      getPhotosByIncident(incidentId),
     ]);
     setIncident(inc);
     setPatients(pts);
     setTriageCounts(counts);
+    setPhotos(pics);
   }, [incidentId]);
 
   useFocusEffect(
@@ -51,6 +100,166 @@ export function IncidentDetailScreen() {
       loadData();
     }, [loadData])
   );
+
+  const handleStatusUpdate = async (newStatus: IncidentStatus) => {
+    if (!incident) return;
+    
+    try {
+      const updateData: any = { status: newStatus };
+      const timeField = STATUS_FLOW.find(s => s.key === newStatus)?.timeField;
+      if (timeField) {
+        updateData[timeField] = new Date().toISOString();
+      }
+      
+      await updateIncident(incident.id, updateData);
+      const serverId = await getIncidentServerId(incident.id);
+      await addToSyncQueue('incidents', incident.id, 'UPDATE', updateData, serverId ? { serverId } : undefined);
+      
+      sync().catch(err => console.log('Sync failed:', err.message));
+      setShowStatusModal(false);
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update status');
+    }
+  };
+
+  const handleNotesUpdate = async () => {
+    if (!incident) return;
+    
+    try {
+      const { estimate } = incident.scene_description 
+        ? parseCasualtyEstimate(incident.scene_description)
+        : { estimate: null };
+      
+      let newSceneDescription = '';
+      if (estimate) {
+        newSceneDescription = `Initial Casualty Estimate: RED: ${estimate.red}, YELLOW: ${estimate.yellow}, GREEN: ${estimate.green}, BLACK: ${estimate.black}\n\n`;
+      }
+      newSceneDescription += editingNotes.trim();
+      
+      await updateIncident(incident.id, { scene_description: newSceneDescription });
+      const serverId = await getIncidentServerId(incident.id);
+      await addToSyncQueue('incidents', incident.id, 'UPDATE', { 
+        scene_description: newSceneDescription 
+      }, serverId ? { serverId } : undefined);
+      
+      sync().catch(err => console.log('Sync failed:', err.message));
+      setShowNotesModal(false);
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update notes');
+    }
+  };
+
+  const handleSituationUpdate = async () => {
+    if (!incident) return;
+    
+    try {
+      await updateIncident(incident.id, { chief_complaint: editingSituation.trim() });
+      const serverId = await getIncidentServerId(incident.id);
+      await addToSyncQueue('incidents', incident.id, 'UPDATE', { 
+        chief_complaint: editingSituation.trim() 
+      }, serverId ? { serverId } : undefined);
+      
+      sync().catch(err => console.log('Sync failed:', err.message));
+      setShowSituationModal(false);
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update situation');
+    }
+  };
+
+  const openNotesEditor = () => {
+    if (!incident) return;
+    const { notes } = incident.scene_description 
+      ? parseCasualtyEstimate(incident.scene_description)
+      : { notes: '' };
+    setEditingNotes(notes);
+    setShowNotesModal(true);
+  };
+
+  const openSituationEditor = () => {
+    if (!incident) return;
+    setEditingSituation(incident.chief_complaint || '');
+    setShowSituationModal(true);
+  };
+
+  const showPhotoOptions = () => {
+    Alert.alert(
+      'Add Photo',
+      'Choose a method',
+      [
+        { text: 'Take Photo', onPress: handleTakePhoto },
+        { text: 'Choose from Library', onPress: handlePickPhoto },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleTakePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Camera permission is needed to take photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      await savePhoto(result.assets[0].uri);
+    }
+  };
+
+  const handlePickPhoto = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Photo library permission is needed');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      await savePhoto(result.assets[0].uri);
+    }
+  };
+
+  const savePhoto = async (uri: string) => {
+    if (!incident) return;
+    
+    try {
+      const photo = await createPhoto({
+        incident_id: incidentId,
+        uri,
+        taken_at: new Date().toISOString(),
+      });
+
+      // Add to sync queue
+      await addToSyncQueue('photos', photo.id, 'CREATE', {
+        incident_id: incidentId,
+        uri: photo.uri,
+        taken_at: photo.taken_at,
+      });
+
+      // Trigger sync
+      sync().catch(err => console.log('Photo sync failed:', err.message));
+      
+      // Refresh photos
+      loadData();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to save photo');
+    }
+  };
 
   if (!incident) {
     return (
@@ -62,10 +271,27 @@ export function IncidentDetailScreen() {
 
   const currentStatusIndex = STATUS_FLOW.findIndex(s => s.key === incident.status);
   
-  // Parse casualty estimate from scene description
   const { estimate: casualtyEstimate, notes: sceneNotes } = incident.scene_description 
     ? parseCasualtyEstimate(incident.scene_description)
     : { estimate: null, notes: '' };
+
+  // Build timeline data with times and diffs
+  const timelineData = STATUS_FLOW.map((status, index) => {
+    const time = getStatusTime(incident, status.key);
+    let timeDiff: string | null = null;
+    
+    if (time && index > 0) {
+      for (let i = index - 1; i >= 0; i--) {
+        const prevTime = getStatusTime(incident, STATUS_FLOW[i].key);
+        if (prevTime) {
+          timeDiff = formatTimeDiff(prevTime, time);
+          break;
+        }
+      }
+    }
+    
+    return { ...status, time, timeDiff };
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -88,70 +314,89 @@ export function IncidentDetailScreen() {
       </View>
 
       <ScrollView style={styles.content}>
-        {/* Status Timeline */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Case Status Timeline</Text>
-            <TouchableOpacity style={styles.updateButton}>
+        {/* Horizontal Status Timeline */}
+        <View style={styles.timelineCard}>
+          <View style={styles.timelineHeaderRow}>
+            <Text style={styles.timelineTitle}>Status Timeline</Text>
+            <TouchableOpacity 
+              style={styles.updateButton}
+              onPress={() => setShowStatusModal(true)}
+            >
               <Text style={styles.updateText}>UPDATE</Text>
               <MaterialIcons name="arrow-forward" size={14} color="#dc2626" />
             </TouchableOpacity>
           </View>
           
-          <View style={styles.timeline}>
-            {STATUS_FLOW.slice(0, currentStatusIndex + 1).map((status, index) => (
-              <View key={status.key} style={styles.timelineItem}>
-                <View style={[
-                  styles.timelineDot,
-                  index === currentStatusIndex && styles.timelineDotActive,
-                ]}>
-                  <MaterialIcons
-                    name={status.icon}
-                    size={12}
-                    color={index === currentStatusIndex ? '#fff' : '#9ca3af'}
-                  />
-                </View>
-                <View style={styles.timelineContent}>
-                  <View style={styles.timelineHeader}>
-                    <Text style={[
-                      styles.timelineTime,
-                      index === currentStatusIndex && styles.timelineTimeActive,
-                    ]}>
-                      {new Date(incident.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </Text>
-                    {index === currentStatusIndex && (
-                      <View style={styles.currentBadge}>
-                        <Text style={styles.currentText}>CURRENT</Text>
-                      </View>
+          {/* Timeline - Time on dot, Time diff on line */}
+          <View style={styles.horizontalTimeline}>
+            {timelineData.map((status, index) => {
+              const isActive = index <= currentStatusIndex;
+              const isCurrent = index === currentStatusIndex;
+              const hasTime = status.time !== null;
+              
+              return (
+                <View key={status.key} style={styles.timelineStep}>
+                  {/* Connector line with time diff */}
+                  {index > 0 && (
+                    <View style={styles.timelineConnectorContainer}>
+                      <View style={[
+                        styles.timelineConnector,
+                        isActive && styles.timelineConnectorActive
+                      ]} />
+                      {/* Time difference on the line */}
+                      {status.timeDiff && (
+                        <View style={styles.timelineDiffBadge}>
+                          <Text style={styles.timelineDiffBadgeText}>+{status.timeDiff}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                  
+                  {/* Step dot with time above */}
+                  <View style={styles.timelineDotWrapper}>
+                    {status.time && (
+                      <Text style={styles.timelineDotTime}>
+                        {new Date(status.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
                     )}
+                    <View style={[
+                      styles.timelineStepDot,
+                      hasTime && styles.timelineStepDotActive,
+                      isCurrent && styles.timelineStepDotCurrent
+                    ]}>
+                      <MaterialIcons
+                        name={status.icon}
+                        size={14}
+                        color={hasTime ? '#fff' : '#6b7280'}
+                      />
+                    </View>
                   </View>
+                  
+                  {/* Label below dot */}
                   <Text style={[
-                    styles.timelineLabel,
-                    index === currentStatusIndex && styles.timelineLabelActive,
+                    styles.timelineStepLabel,
+                    hasTime && styles.timelineStepLabelActive,
+                    isCurrent && styles.timelineStepLabelCurrent
                   ]}>
                     {status.label}
                   </Text>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
         </View>
 
-        {/* Situation Type */}
-        {incident.chief_complaint && (
-          <View style={styles.card}>
-            <View style={styles.cardIconRow}>
-              <MaterialIcons name="emergency" size={20} color="#dc2626" />
-              <Text style={styles.cardTitle}>Situation Type</Text>
-            </View>
-            <Text style={styles.situationText}>{incident.chief_complaint}</Text>
-          </View>
-        )}
+        {/* Situation Type - Editable */}
+        <TouchableOpacity style={styles.compactCard} onPress={openSituationEditor} activeOpacity={0.7}>
+          <MaterialIcons name="emergency" size={18} color="#dc2626" />
+          <Text style={styles.compactCardText}>{incident.chief_complaint || 'Tap to set situation type'}</Text>
+          <MaterialIcons name="edit" size={16} color="#6b7280" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
 
         {/* Location */}
         <View style={styles.card}>
           <View style={styles.cardIconRow}>
-            <MaterialIcons name="location-on" size={20} color="#dc2626" />
+            <MaterialIcons name="location-on" size={18} color="#dc2626" />
             <Text style={styles.cardTitle}>Location</Text>
           </View>
           <Text style={styles.locationText}>{incident.address}</Text>
@@ -179,138 +424,388 @@ export function IncidentDetailScreen() {
                 />
               </MapView>
               <View style={styles.mapOverlay}>
-                <MaterialIcons name="open-in-new" size={20} color="#fff" />
-                <Text style={styles.mapOverlayText}>Open in Maps</Text>
+                <MaterialIcons name="open-in-new" size={16} color="#fff" />
+                <Text style={styles.mapOverlayText}>Open Maps</Text>
               </View>
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Initial Casualty Estimate */}
-        {casualtyEstimate && (
-          <View style={styles.card}>
-            <View style={styles.cardIconRow}>
-              <MaterialIcons name="groups" size={20} color="#dc2626" />
-              <Text style={styles.cardTitle}>Initial Casualty Estimate</Text>
-            </View>
-            <View style={styles.estimateGrid}>
-              <View style={styles.estimateItem}>
-                <Text style={[styles.estimateCount, { color: '#dc2626' }]}>
-                  {casualtyEstimate.red}
-                </Text>
-                <Text style={styles.estimateLabel}>RED</Text>
-              </View>
-              <View style={styles.estimateItem}>
-                <Text style={[styles.estimateCount, { color: '#f59e0b' }]}>
-                  {casualtyEstimate.yellow}
-                </Text>
-                <Text style={styles.estimateLabel}>YELLOW</Text>
-              </View>
-              <View style={styles.estimateItem}>
-                <Text style={[styles.estimateCount, { color: '#16a34a' }]}>
-                  {casualtyEstimate.green}
-                </Text>
-                <Text style={styles.estimateLabel}>GREEN</Text>
-              </View>
-              <View style={styles.estimateItem}>
-                <Text style={[styles.estimateCount, { color: '#6b7280' }]}>
-                  {casualtyEstimate.black}
-                </Text>
-                <Text style={styles.estimateLabel}>BLACK</Text>
+        {/* Casualty Summary */}
+        <View style={styles.casualtyCard}>
+          <View style={styles.casualtyHeader}>
+            <MaterialIcons name="groups" size={18} color="#dc2626" />
+            <Text style={styles.casualtyTitle}>Casualty Summary</Text>
+          </View>
+          
+          {casualtyEstimate && (
+            <View style={styles.casualtyRow}>
+              <Text style={styles.casualtyRowLabel}>Initial Estimate</Text>
+              <View style={styles.casualtyCounts}>
+                <View style={styles.countItem}>
+                  <Text style={[styles.countValue, { color: '#dc2626' }]}>{casualtyEstimate.red}</Text>
+                  <Text style={styles.countLabel}>RED</Text>
+                </View>
+                <View style={styles.countItem}>
+                  <Text style={[styles.countValue, { color: '#f59e0b' }]}>{casualtyEstimate.yellow}</Text>
+                  <Text style={styles.countLabel}>YEL</Text>
+                </View>
+                <View style={styles.countItem}>
+                  <Text style={[styles.countValue, { color: '#16a34a' }]}>{casualtyEstimate.green}</Text>
+                  <Text style={styles.countLabel}>GRN</Text>
+                </View>
+                <View style={styles.countItem}>
+                  <Text style={[styles.countValue, { color: '#6b7280' }]}>{casualtyEstimate.black}</Text>
+                  <Text style={styles.countLabel}>BLK</Text>
+                </View>
               </View>
             </View>
-            <Text style={styles.estimateNote}>
-              First arrival estimate • Compare with actual patient count below
-            </Text>
-          </View>
-        )}
-
-        {/* Scene Notes */}
-        {sceneNotes && (
-          <View style={styles.card}>
-            <View style={styles.cardIconRow}>
-              <MaterialIcons name="description" size={20} color="#dc2626" />
-              <Text style={styles.cardTitle}>Scene Notes</Text>
+          )}
+          
+          <View style={styles.casualtyRow}>
+            <Text style={styles.casualtyRowLabel}>Actual Patients</Text>
+            <View style={styles.casualtyCounts}>
+              <View style={styles.countItem}>
+                <Text style={[styles.countValue, { color: '#dc2626' }]}>{triageCounts.red}</Text>
+                <Text style={styles.countLabel}>RED</Text>
+              </View>
+              <View style={styles.countItem}>
+                <Text style={[styles.countValue, { color: '#f59e0b' }]}>{triageCounts.yellow}</Text>
+                <Text style={styles.countLabel}>YEL</Text>
+              </View>
+              <View style={styles.countItem}>
+                <Text style={[styles.countValue, { color: '#16a34a' }]}>{triageCounts.green}</Text>
+                <Text style={styles.countLabel}>GRN</Text>
+              </View>
+              <View style={styles.countItem}>
+                <Text style={[styles.countValue, { color: '#6b7280' }]}>{triageCounts.black}</Text>
+                <Text style={styles.countLabel}>BLK</Text>
+              </View>
             </View>
-            <Text style={styles.notesText}>{sceneNotes}</Text>
-          </View>
-        )}
-
-        {/* Triage Summary */}
-        <View style={styles.triageGrid}>
-          <View style={styles.triageCard}>
-            <Text style={[styles.triageCount, { color: '#dc2626' }]}>{triageCounts.red}</Text>
-            <Text style={styles.triageLabel}>RED</Text>
-          </View>
-          <View style={styles.triageCard}>
-            <Text style={[styles.triageCount, { color: '#f59e0b' }]}>{triageCounts.yellow}</Text>
-            <Text style={styles.triageLabel}>YELLOW</Text>
-          </View>
-          <View style={styles.triageCard}>
-            <Text style={[styles.triageCount, { color: '#16a34a' }]}>{triageCounts.green}</Text>
-            <Text style={styles.triageLabel}>GREEN</Text>
-          </View>
-          <View style={styles.triageCard}>
-            <Text style={[styles.triageCount, { color: '#6b7280' }]}>{triageCounts.black}</Text>
-            <Text style={styles.triageLabel}>BLACK</Text>
           </View>
         </View>
 
-        {/* Add Patient Button */}
-        <TouchableOpacity
-          style={styles.addPatientButton}
-          onPress={() => navigation.navigate('NewPatient', { incidentId } as never)}
-        >
-          <MaterialIcons name="person-add" size={20} color="#000" />
-          <Text style={styles.addPatientText}>ADD PATIENT</Text>
+        {/* Scene Notes - Editable */}
+        <TouchableOpacity style={styles.card} onPress={openNotesEditor} activeOpacity={0.7}>
+          <View style={styles.cardIconRow}>
+            <MaterialIcons name="description" size={18} color="#dc2626" />
+            <Text style={styles.cardTitle}>Scene Notes</Text>
+            <MaterialIcons name="edit" size={16} color="#6b7280" style={{ marginLeft: 'auto' }} />
+          </View>
+          {sceneNotes ? (
+            <Text style={styles.notesText}>{sceneNotes}</Text>
+          ) : (
+            <Text style={styles.notesPlaceholder}>Tap to add scene notes...</Text>
+          )}
         </TouchableOpacity>
 
-        {/* Patient List */}
-        <Text style={styles.sectionTitle}>Patients ({patients.length})</Text>
+        {/* Photos Section */}
+        <View style={styles.card}>
+          <View style={styles.cardIconRow}>
+            <MaterialIcons name="photo-camera" size={18} color="#dc2626" />
+            <Text style={styles.cardTitle}>Scene Photos ({photos.length})</Text>
+            <TouchableOpacity 
+              style={styles.addPhotoBtn}
+              onPress={showPhotoOptions}
+            >
+              <MaterialIcons name="add-a-photo" size={16} color="#fff" />
+              <Text style={styles.addPhotoBtnText}>Add</Text>
+            </TouchableOpacity>
+          </View>
+          {photos.length === 0 ? (
+            <View style={styles.emptyPhotosContainer}>
+              <MaterialIcons name="photo-library" size={40} color="#374151" />
+              <Text style={styles.notesPlaceholder}>No photos added</Text>
+              <TouchableOpacity style={styles.takePhotoBtn} onPress={showPhotoOptions}>
+                <MaterialIcons name="camera-alt" size={20} color="#dc2626" />
+                <Text style={styles.takePhotoBtnText}>Take Photo</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={photos}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.photoThumbnail}
+                  onPress={() => {
+                    setSelectedPhoto(item);
+                    setShowPhotoModal(true);
+                  }}
+                >
+                  <Image source={{ uri: item.uri }} style={styles.photoThumbImage} />
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.photoList}
+            />
+          )}
+        </View>
+
+        {/* Patient List Header */}
+        <View style={styles.patientListHeader}>
+          <Text style={styles.sectionTitle}>Patients ({patients.length})</Text>
+          <TouchableOpacity
+            style={styles.addPatientBtn}
+            onPress={() => (navigation as any).navigate('NewPatient', { incidentId })}
+          >
+            <MaterialIcons name="person-add" size={16} color="#fff" />
+            <Text style={styles.addPatientBtnText}>Add</Text>
+          </TouchableOpacity>
+        </View>
         
+        {/* Patient List */}
         {patients.length === 0 ? (
           <View style={styles.emptyCard}>
-            <MaterialIcons name="person-off" size={48} color="#374151" />
-            <Text style={styles.emptyText}>No patients logged yet</Text>
-            <Text style={styles.emptySubtext}>Add patients to the case</Text>
+            <MaterialIcons name="person-off" size={40} color="#374151" />
+            <Text style={styles.emptyText}>No patients logged</Text>
           </View>
         ) : (
-          patients.map((patient) => (
-            <TouchableOpacity
-              key={patient.id}
-              style={styles.patientItem}
-              onPress={() => navigation.navigate('PatientDetail', { 
-                patientId: patient.id, 
-                incidentId 
-              } as never)}
-            >
-              <View style={[
-                styles.patientAvatar,
-                { backgroundColor: getTriageColor(patient.triage_priority) },
-              ]}>
-                <Text style={styles.patientAvatarText}>
-                  {patient.triage_priority.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.patientInfo}>
-                <View style={styles.patientHeader}>
-                  <Text style={styles.patientName}>{patient.first_name || 'Unknown'}</Text>
-                  <View style={[
-                    styles.triageBadge,
-                    { backgroundColor: getTriageColor(patient.triage_priority) },
-                  ]}>
-                    <Text style={styles.triageBadgeText}>{patient.triage_priority.toUpperCase()}</Text>
-                  </View>
+          <>
+            {patients.map((patient) => (
+              <TouchableOpacity
+                key={patient.id}
+                style={styles.patientItem}
+                onPress={() => (navigation as any).navigate('PatientDetail', { 
+                  patientId: patient.id, 
+                  incidentId 
+                })}
+              >
+                <View style={[
+                  styles.patientAvatar,
+                  { backgroundColor: getTriageColor(patient.triage_priority) },
+                ]}>
+                  <Text style={styles.patientAvatarText}>
+                    {patient.triage_priority.charAt(0).toUpperCase()}
+                  </Text>
                 </View>
-                <Text style={styles.patientDetails}>
-                  {(patient.gender || '?').toUpperCase()} • {calculateAge(patient.date_of_birth)} • {patient.chief_complaint || 'No condition'}
-                </Text>
-              </View>
-              <MaterialIcons name="chevron-right" size={24} color="#6b7280" />
-            </TouchableOpacity>
-          ))
+                <View style={styles.patientInfo}>
+                  <View style={styles.patientHeader}>
+                    <Text style={styles.patientName}>{patient.first_name || 'Unknown'}</Text>
+                    <View style={[
+                      styles.triageBadge,
+                      { backgroundColor: getTriageColor(patient.triage_priority) },
+                    ]}>
+                      <Text style={styles.triageBadgeText}>{patient.triage_priority.toUpperCase()}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.patientDetails}>
+                    {(patient.gender || '?').toUpperCase()} • {calculateAge(patient.date_of_birth)} • {patient.chief_complaint || 'No condition'}
+                  </Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            ))}
+          </>
         )}
+        
+        <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* Status Update Modal */}
+      <Modal
+        visible={showStatusModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowStatusModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Case Status</Text>
+              <TouchableOpacity onPress={() => setShowStatusModal(false)}>
+                <MaterialIcons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+            
+            {STATUS_FLOW.map((status, index) => {
+              const isActive = index <= currentStatusIndex;
+              const isCurrent = index === currentStatusIndex;
+              const isPast = index < currentStatusIndex;
+              const statusTime = getStatusTime(incident, status.key);
+              
+              return (
+                <TouchableOpacity
+                  key={status.key}
+                  style={[
+                    styles.statusOption,
+                    isCurrent && styles.statusOptionCurrent,
+                    isPast && styles.statusOptionPast
+                  ]}
+                  onPress={() => handleStatusUpdate(status.key)}
+                  disabled={isCurrent || isPast}
+                >
+                  <View style={[
+                    styles.statusOptionDot,
+                    isActive && styles.statusOptionDotActive,
+                    isCurrent && styles.statusOptionDotCurrent
+                  ]}>
+                    <MaterialIcons 
+                      name={status.icon} 
+                      size={16} 
+                      color={isActive ? '#fff' : '#6b7280'} 
+                    />
+                  </View>
+                  <View style={styles.statusOptionContent}>
+                    <Text style={[
+                      styles.statusOptionLabel,
+                      isActive && styles.statusOptionLabelActive,
+                      isCurrent && styles.statusOptionLabelCurrent
+                    ]}>
+                      {status.label}
+                    </Text>
+                    {statusTime && (
+                      <Text style={styles.statusOptionTime}>
+                        {new Date(statusTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    )}
+                    {isCurrent && (
+                      <Text style={styles.statusOptionSubtext}>Current Status</Text>
+                    )}
+                  </View>
+                  {isActive && !isCurrent && (
+                    <MaterialIcons name="check" size={20} color="#16a34a" />
+                  )}
+                  {isCurrent && (
+                    <MaterialIcons name="radio-button-checked" size={20} color="#dc2626" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Scene Notes Edit Modal */}
+      <Modal
+        visible={showNotesModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNotesModal(false)}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Edit Scene Notes</Text>
+                <TouchableOpacity onPress={() => setShowNotesModal(false)}>
+                  <MaterialIcons name="close" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <TextInput
+                  style={styles.notesInput}
+                  multiline
+                  numberOfLines={6}
+                  placeholder="Enter scene notes..."
+                  placeholderTextColor="#6b7280"
+                  value={editingNotes}
+                  onChangeText={setEditingNotes}
+                  textAlignVertical="top"
+                />
+              </ScrollView>
+              
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  style={styles.modalBtnSecondary}
+                  onPress={() => setShowNotesModal(false)}
+                >
+                  <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.modalBtnPrimary}
+                  onPress={handleNotesUpdate}
+                >
+                  <Text style={styles.modalBtnPrimaryText}>Save Notes</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Situation Type Edit Modal */}
+      <Modal
+        visible={showSituationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSituationModal(false)}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Edit Situation Type</Text>
+                <TouchableOpacity onPress={() => setShowSituationModal(false)}>
+                  <MaterialIcons name="close" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView 
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <TextInput
+                  style={styles.situationInput}
+                  placeholder="e.g., Multi-vehicle collision, Cardiac arrest..."
+                  placeholderTextColor="#6b7280"
+                  value={editingSituation}
+                  onChangeText={setEditingSituation}
+                />
+              </ScrollView>
+              
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  style={styles.modalBtnSecondary}
+                  onPress={() => setShowSituationModal(false)}
+                >
+                  <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.modalBtnPrimary}
+                  onPress={handleSituationUpdate}
+                >
+                  <Text style={styles.modalBtnPrimaryText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Photo Viewer Modal */}
+      <Modal
+        visible={showPhotoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPhotoModal(false)}
+      >
+        <View style={styles.photoModalOverlay}>
+          <View style={styles.photoModalHeader}>
+            <TouchableOpacity onPress={() => setShowPhotoModal(false)}>
+              <MaterialIcons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+            {selectedPhoto?.caption && (
+              <Text style={styles.photoModalCaption}>{selectedPhoto.caption}</Text>
+            )}
+            <View style={{ width: 28 }} />
+          </View>
+          {selectedPhoto && (
+            <Image source={{ uri: selectedPhoto.uri }} style={styles.photoFullImage} resizeMode="contain" />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -325,7 +820,6 @@ function getTriageColor(triage: string): string {
   return colors[triage] || '#6b7280';
 }
 
-// Calculate age from date_of_birth
 function calculateAge(dob: string | undefined): string {
   if (!dob) return '?';
   const birth = new Date(dob);
@@ -334,7 +828,6 @@ function calculateAge(dob: string | undefined): string {
   return age > 0 ? `${age}y` : '?';
 }
 
-// Parse casualty estimate from scene_description
 function parseCasualtyEstimate(sceneDescription: string): { 
   estimate: { red: number; yellow: number; green: number; black: number } | null;
   notes: string;
@@ -405,23 +898,25 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
+    padding: 12,
   },
-  card: {
+  
+  // Timeline Card
+  timelineCard: {
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
     borderColor: '#2a2a2a',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
   },
-  cardHeader: {
+  timelineHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  cardTitle: {
+  timelineTitle: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#9ca3af',
@@ -441,63 +936,130 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#dc2626',
   },
-  timeline: {
-    paddingLeft: 8,
-  },
-  timelineItem: {
+  
+  // Horizontal Timeline - Time on dot, Diff on line
+  horizontalTimeline: {
     flexDirection: 'row',
-    marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingTop: 20,
+    paddingBottom: 8,
   },
-  timelineDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  timelineStep: {
+    alignItems: 'center',
+    flex: 1,
+    position: 'relative',
+  },
+  timelineConnectorContainer: {
+    position: 'absolute',
+    top: 14, // Center of dot (20 paddingTop + 14 = 34, half of 32px dot is 16, so 34-16=18, adjusted)
+    left: '-50%',
+    right: '50%',
+    height: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 0,
+  },
+  timelineConnector: {
+    position: 'absolute',
+    top: 0,
+    left: 4,
+    right: 4,
+    height: 2,
+    backgroundColor: '#374151',
+  },
+  timelineConnectorActive: {
+    backgroundColor: '#dc2626',
+  },
+  timelineDiffBadge: {
+    position: 'absolute',
+    top: -10,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#dc2626',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    zIndex: 2,
+  },
+  timelineDiffBadgeText: {
+    fontSize: 9,
+    color: '#dc2626',
+    fontWeight: '600',
+  },
+  timelineDotWrapper: {
+    alignItems: 'center',
+    marginBottom: 6,
+    zIndex: 1,
+  },
+  timelineDotTime: {
+    position: 'absolute',
+    top: -18,
+    fontSize: 10,
+    color: '#9ca3af',
+    fontWeight: '600',
+  },
+  timelineStepDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#374151',
     borderWidth: 2,
     borderColor: '#4b5563',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    zIndex: 1,
   },
-  timelineDotActive: {
+  timelineStepDotActive: {
     backgroundColor: '#dc2626',
     borderColor: '#dc2626',
   },
-  timelineContent: {
-    flex: 1,
+  timelineStepDotCurrent: {
+    transform: [{ scale: 1.1 }],
+    borderColor: '#fff',
   },
-  timelineHeader: {
+  timelineStepLabel: {
+    fontSize: 10,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  timelineStepLabelActive: {
+    color: '#9ca3af',
+  },
+  timelineStepLabelCurrent: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  
+  // Compact Cards
+  compactCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 2,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
   },
-  timelineTime: {
-    fontSize: 12,
-    color: '#6b7280',
+  compactCardText: {
+    fontSize: 16,
     fontWeight: '600',
-  },
-  timelineTimeActive: {
-    color: '#dc2626',
-  },
-  currentBadge: {
-    backgroundColor: 'rgba(220, 38, 38, 0.2)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  currentText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#dc2626',
-  },
-  timelineLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#9ca3af',
-  },
-  timelineLabelActive: {
     color: '#fff',
+    flex: 1,
+  },
+  
+  // Regular Card
+  card: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
   },
   cardIconRow: {
     flexDirection: 'row',
@@ -505,145 +1067,21 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
-  locationText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  gpsText: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  notesText: {
-    fontSize: 14,
-    color: '#d1d5db',
-    lineHeight: 20,
-  },
-  triageGrid: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  triageCard: {
-    flex: 1,
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-  },
-  triageCount: {
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  triageLabel: {
-    fontSize: 10,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  addPatientButton: {
-    backgroundColor: '#fff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 16,
-  },
-  addPatientText: {
-    color: '#000',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  sectionTitle: {
+  cardTitle: {
     fontSize: 12,
     fontWeight: 'bold',
-    color: '#6b7280',
+    color: '#9ca3af',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 12,
   },
-  emptyCard: {
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    borderRadius: 16,
-    padding: 32,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: '#9ca3af',
-    marginTop: 12,
+  locationText: {
     fontSize: 16,
-  },
-  emptySubtext: {
-    color: '#6b7280',
-    marginTop: 4,
-    fontSize: 14,
-  },
-  patientItem: {
-    backgroundColor: '#1a1a1a',
-    borderWidth: 1,
-    borderColor: '#2a2a2a',
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  patientAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  patientAvatarText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  patientInfo: {
-    flex: 1,
-  },
-  patientHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  patientName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  triageBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  triageBadgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  patientDetails: {
-    fontSize: 13,
-    color: '#9ca3af',
-  },
-  situationText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: '#fff',
   },
   mapPreviewContainer: {
-    marginTop: 12,
-    height: 150,
-    borderRadius: 12,
+    marginTop: 10,
+    height: 120,
+    borderRadius: 10,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -658,39 +1096,392 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.7)',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
     gap: 4,
   },
   mapOverlayText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
-  estimateGrid: {
+  notesText: {
+    fontSize: 14,
+    color: '#d1d5db',
+    lineHeight: 20,
+  },
+  notesPlaceholder: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontStyle: 'italic',
+  },
+  
+  // Casualty Summary Card
+  casualtyCard: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  casualtyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  casualtyTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+  },
+  casualtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  casualtyRowLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  casualtyCounts: {
     flexDirection: 'row',
     gap: 16,
-    marginTop: 12,
   },
-  estimateItem: {
-    flex: 1,
+  countItem: {
     alignItems: 'center',
+    minWidth: 32,
   },
-  estimateCount: {
-    fontSize: 32,
+  countValue: {
+    fontSize: 20,
     fontWeight: 'bold',
   },
-  estimateLabel: {
-    fontSize: 11,
+  countLabel: {
+    fontSize: 9,
     color: '#6b7280',
+    marginTop: 2,
+  },
+  
+  // Patient List
+  patientListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 4,
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#6b7280',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  addPatientBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  addPatientBtnText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '600',
   },
-  estimateNote: {
-    fontSize: 12,
+  emptyCard: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyText: {
     color: '#6b7280',
+    marginTop: 8,
+    fontSize: 14,
+  },
+  patientItem: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  patientAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  patientAvatarText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  patientInfo: {
+    flex: 1,
+  },
+  patientHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  patientName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  triageBadge: {
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  triageBadgeText: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  patientDetails: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  
+  // Modals
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 16,
+    paddingBottom: 32,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  
+  // Status Modal
+  statusOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    gap: 12,
+    opacity: 1,
+  },
+  statusOptionCurrent: {
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  statusOptionPast: {
+    opacity: 0.4,
+  },
+  statusOptionDot: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#374151',
+    borderWidth: 2,
+    borderColor: '#4b5563',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusOptionDotActive: {
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
+  },
+  statusOptionDotCurrent: {
+    backgroundColor: '#dc2626',
+    borderColor: '#fff',
+  },
+  statusOptionContent: {
+    flex: 1,
+  },
+  statusOptionLabel: {
+    fontSize: 15,
+    color: '#6b7280',
+  },
+  statusOptionLabelActive: {
+    color: '#d1d5db',
+  },
+  statusOptionLabelCurrent: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  statusOptionTime: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  statusOptionSubtext: {
+    fontSize: 12,
+    color: '#dc2626',
+    marginTop: 2,
+  },
+  
+  // Notes Modal
+  notesInput: {
+    backgroundColor: '#0f0f0f',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 16,
+    color: '#fff',
+    fontSize: 16,
+    minHeight: 120,
+    textAlignVertical: 'top',
+    marginBottom: 16,
+  },
+  
+  // Situation Modal
+  situationInput: {
+    backgroundColor: '#0f0f0f',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 16,
+    color: '#fff',
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalBtnSecondary: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#374151',
+    alignItems: 'center',
+  },
+  modalBtnSecondaryText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  modalBtnPrimary: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#dc2626',
+    alignItems: 'center',
+  },
+  modalBtnPrimaryText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  
+  // Photos
+  photoList: {
+    paddingVertical: 8,
+    gap: 8,
+  },
+  photoThumbnail: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: '#0f0f0f',
+    marginRight: 8,
+    overflow: 'hidden',
+  },
+  photoThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  photoModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+  },
+  photoModalHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: 50,
+    zIndex: 10,
+  },
+  photoModalCaption: {
+    color: '#fff',
+    fontSize: 14,
+    textAlign: 'center',
+    flex: 1,
+    marginHorizontal: 16,
+  },
+  photoFullImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height - 100,
+  },
+  addPhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginLeft: 'auto',
+  },
+  addPhotoBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyPhotosContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  takePhotoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginTop: 12,
-    fontStyle: 'italic',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dc2626',
+  },
+  takePhotoBtnText: {
+    color: '#dc2626',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
