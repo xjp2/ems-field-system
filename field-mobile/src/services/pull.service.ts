@@ -22,22 +22,26 @@ export async function pullIncidents(): Promise<void> {
     await upsertIncident(serverIncident);
   }
 
-  // Delete local synced incidents that no longer exist on server
+  // Delete local incidents that no longer exist on server
   const localIncidents = await getAllIncidents();
   const serverIncidentIds = new Set(incidents.map((inc: any) => inc.id));
-  const syncedLocalIncidents = localIncidents.filter((inc) => inc.is_synced);
+  let deletedCount = 0;
 
-  for (const localIncident of syncedLocalIncidents) {
-    if (!serverIncidentIds.has(localIncident.id)) {
-      console.log('Deleting local incident removed from server:', localIncident.id);
+  for (const localIncident of localIncidents) {
+    // Check if this local incident exists on server by either local id or server_id
+    const existsOnServer = serverIncidentIds.has(localIncident.id) ||
+                           (localIncident.server_id && serverIncidentIds.has(localIncident.server_id));
+
+    if (!existsOnServer) {
+      console.log('Deleting local incident not found on server:', localIncident.id, 'server_id:', localIncident.server_id);
       await safeExecute(
         'DELETE FROM incidents WHERE id = ?',
         [localIncident.id]
       );
+      deletedCount++;
     }
   }
 
-  const deletedCount = syncedLocalIncidents.filter(inc => !serverIncidentIds.has(inc.id)).length;
   console.log(`Pulled ${incidents.length} incidents, deleted ${deletedCount} removed`);
 
   // Notify screens to reload if any changes were made
