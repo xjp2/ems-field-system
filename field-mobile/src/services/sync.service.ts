@@ -13,7 +13,7 @@ import {
 import { markPatientSynced, getPatientServerId } from '../database/patients-db';
 import { markVitalSynced, getVitalById } from '../database/vitals-db';
 import { markInterventionSynced } from '../database/interventions-db';
-import { markPhotoAsSynced } from '../database/photos-db';
+import { markPhotoAsSynced, getPhotoById, getPhotosByIncident, deletePhoto, createPhoto } from '../database/photos-db';
 import { SyncResult, SyncQueueEntry } from '../types/database';
 
 const MAX_RETRIES = 5;
@@ -287,6 +287,13 @@ async function syncPhoto(
   payload: any
 ): Promise<void> {
   if (operation.operation === 'CREATE') {
+    // Check if photo was already synced (has server_id) - prevents duplicates on retry
+    const localPhoto = await getPhotoById(operation.local_id);
+    if (localPhoto?.server_id) {
+      console.log('Photo already has server_id, skipping duplicate upload:', localPhoto.server_id);
+      return;
+    }
+
     // Look up the server_id for the incident
     const serverIncidentId = await getIncidentServerId(payload.incident_id);
     if (!serverIncidentId) {
@@ -331,6 +338,56 @@ async function syncPhoto(
     
     // Mark as synced with server_id and update URI to public URL
     await markPhotoAsSynced(operation.local_id, created.id, created.public_url);
+  }
+}
+
+/**
+ * Reconcile local photos with server photos for an incident
+ * Removes local photos deleted from server, adds server photos missing locally
+ */
+export async function reconcilePhotosForIncident(incidentId: string): Promise<void> {
+  const serverIncidentId = await getIncidentServerId(incidentId);
+  if (!serverIncidentId) {
+    console.log('Incident not synced yet, skipping photo reconciliation');
+    return;
+  }
+  
+  try {
+    // Fetch server photos
+    const { data: serverPhotos } = await api.get(endpoints.photos.byIncident(serverIncidentId));
+    const serverPhotoList = serverPhotos || [];
+    const serverPhotoIds = new Set(serverPhotoList.map((p: any) => p.id));
+    
+    // Get local photos
+    const localPhotos = await getPhotosByIncident(incidentId);
+    const syncedLocalPhotos = localPhotos.filter(p => p.is_synced && p.server_id);
+    
+    // Delete local synced photos that no longer exist on server
+    for (const localPhoto of syncedLocalPhotos) {
+      if (!serverPhotoIds.has(localPhoto.server_id!)) {
+        console.log('Deleting local photo removed from server:', localPhoto.id);
+        await deletePhoto(localPhoto.id);
+      }
+    }
+    
+    // Add server photos that don't exist locally
+    const localServerIds = new Set(localPhotos.map(p => p.server_id).filter(Boolean));
+    for (const serverPhoto of serverPhotoList) {
+      if (!localServerIds.has(serverPhoto.id)) {
+        console.log('Adding server photo to local:', serverPhoto.id);
+        await createPhoto({
+          incident_id: incidentId,
+          uri: serverPhoto.public_url,
+          caption: serverPhoto.caption,
+          taken_at: serverPhoto.taken_at,
+          server_id: serverPhoto.id,
+          server_incident_id: serverIncidentId,
+          is_synced: true,
+        });
+      }
+    }
+  } catch (error: any) {
+    console.error('Failed to reconcile photos:', error.message);
   }
 }
 

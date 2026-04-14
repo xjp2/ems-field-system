@@ -28,6 +28,7 @@ import { Incident, Patient, IncidentStatus, Photo } from '../../types/database';
 import { getIncidentById, updateIncident, getIncidentServerId } from '../../database/incidents-db';
 import { getPatientsByIncident, getTriageCounts } from '../../database/patients-db';
 import { getPhotosByIncident, createPhoto } from '../../database/photos-db';
+import { reconcilePhotosForIncident } from '../../services/sync.service';
 import { addToSyncQueue } from '../../database/sync-queue';
 import { useSyncStore } from '../../stores/sync.store';
 
@@ -98,7 +99,12 @@ export function IncidentDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+      // Sync then reconcile photos with server (handles server deletions)
+      sync()
+        .then(() => reconcilePhotosForIncident(incidentId))
+        .then(() => loadData())
+        .catch(err => console.log('Sync/reconcile failed:', err.message));
+    }, [loadData, incidentId, sync])
   );
 
   const handleStatusUpdate = async (newStatus: IncidentStatus) => {

@@ -44,6 +44,21 @@ export async function updatePhotoUri(photoId: string, uri: string): Promise<void
   );
 }
 
+export async function getPhotoById(photoId: string): Promise<Photo | null> {
+  const db = await getDatabase();
+  const row = await db.getFirstAsync<Photo>(
+    `SELECT * FROM photos WHERE id = ?`,
+    [photoId]
+  );
+  if (row) {
+    return {
+      ...row,
+      is_synced: Boolean(row.is_synced),
+    };
+  }
+  return null;
+}
+
 export async function getPhotosByIncident(incidentId: string): Promise<Photo[]> {
   const db = await getDatabase();
   const rows = await db.getAllAsync<Photo>(
