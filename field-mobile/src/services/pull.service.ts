@@ -104,14 +104,23 @@ export async function pullIncidentDetail(incidentId: string): Promise<void> {
         }
       }
     }
-  } catch (err) {
-    console.log('No photos for incident:', incidentId);
+  } catch (err: any) {
+    console.log('No photos for incident:', incidentId, err?.message);
   }
 
   console.log('Pulled incident detail complete:', incidentId);
 }
 
 // --- Upsert Helpers ---
+
+async function safeExecute(sql: string, params: any[]): Promise<void> {
+  try {
+    await executeSql(sql, params);
+  } catch (err: any) {
+    console.error('DB execute error:', err.message, 'SQL:', sql.slice(0, 100));
+    throw err;
+  }
+}
 
 async function upsertIncident(incident: any): Promise<void> {
   const existing = await getIncidentById(incident.id);
@@ -123,12 +132,12 @@ async function upsertIncident(incident: any): Promise<void> {
       return;
     }
 
-    await executeSql(
+    await safeExecute(
       `UPDATE incidents SET
         server_id = ?, incident_number = ?, address = ?, latitude = ?, longitude = ?,
         location_description = ?, status = ?, priority = ?, chief_complaint = ?, scene_description = ?,
         estimated_arrival = ?, dispatched_at = ?, en_route_at = ?, on_scene_at = ?, transporting_at = ?,
-        arrived_at = ?, closed_at = ?, hospital_id = ?, local_id = ?, device_id = ?,
+        arrived_at = ?, closed_at = ?, local_id = ?, device_id = ?,
         created_at = ?, updated_at = ?, created_by = ?, updated_by = ?, is_synced = 1
       WHERE id = ?`,
       [
@@ -149,7 +158,6 @@ async function upsertIncident(incident: any): Promise<void> {
         incident.transporting_at || null,
         incident.arrived_at || null,
         incident.closed_at || null,
-        incident.hospital_id || null,
         incident.local_id || null,
         incident.device_id || null,
         incident.created_at,
@@ -160,14 +168,14 @@ async function upsertIncident(incident: any): Promise<void> {
       ]
     );
   } else {
-    await executeSql(
+    await safeExecute(
       `INSERT INTO incidents (
         id, server_id, incident_number, address, latitude, longitude,
         location_description, status, priority, chief_complaint, scene_description,
         estimated_arrival, dispatched_at, en_route_at, on_scene_at, transporting_at,
-        arrived_at, closed_at, hospital_id, local_id, device_id,
+        arrived_at, closed_at, local_id, device_id,
         created_at, updated_at, created_by, updated_by, is_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         incident.id,
         incident.id, // server_id = id since it's from server
@@ -187,7 +195,6 @@ async function upsertIncident(incident: any): Promise<void> {
         incident.transporting_at || null,
         incident.arrived_at || null,
         incident.closed_at || null,
-        incident.hospital_id || null,
         incident.local_id || null,
         incident.device_id || null,
         incident.created_at,
@@ -237,7 +244,7 @@ async function upsertPatient(patient: any): Promise<void> {
   ];
 
   if (existing) {
-    await executeSql(
+    await safeExecute(
       `UPDATE patients SET
         server_id = ?, incident_id = ?, server_incident_id = ?, first_name = ?, last_name = ?,
         date_of_birth = ?, gender = ?, mrn = ?, emergency_contact_name = ?, emergency_contact_phone = ?,
@@ -247,7 +254,7 @@ async function upsertPatient(patient: any): Promise<void> {
       [...params, patient.id]
     );
   } else {
-    await executeSql(
+    await safeExecute(
       `INSERT INTO patients (
         id, server_id, incident_id, server_incident_id, first_name, last_name,
         date_of_birth, gender, mrn, emergency_contact_name, emergency_contact_phone,
@@ -297,7 +304,7 @@ async function upsertVital(vital: any): Promise<void> {
   ];
 
   if (existing) {
-    await executeSql(
+    await safeExecute(
       `UPDATE vitals SET
         server_id = ?, patient_id = ?, server_patient_id = ?, recorded_at = ?, blood_pressure_systolic = ?,
         blood_pressure_diastolic = ?, heart_rate = ?, respiratory_rate = ?, oxygen_saturation = ?,
@@ -307,7 +314,7 @@ async function upsertVital(vital: any): Promise<void> {
       [...params, vital.id]
     );
   } else {
-    await executeSql(
+    await safeExecute(
       `INSERT INTO vitals (
         id, server_id, patient_id, server_patient_id, recorded_at, blood_pressure_systolic,
         blood_pressure_diastolic, heart_rate, respiratory_rate, oxygen_saturation,
@@ -350,7 +357,7 @@ async function upsertIntervention(intervention: any): Promise<void> {
   ];
 
   if (existing) {
-    await executeSql(
+    await safeExecute(
       `UPDATE interventions SET
         server_id = ?, patient_id = ?, server_patient_id = ?, performed_at = ?, type = ?,
         name = ?, dosage = ?, route = ?, indication = ?, response = ?, notes = ?,
@@ -359,7 +366,7 @@ async function upsertIntervention(intervention: any): Promise<void> {
       [...params, intervention.id]
     );
   } else {
-    await executeSql(
+    await safeExecute(
       `INSERT INTO interventions (
         id, server_id, patient_id, server_patient_id, performed_at, type,
         name, dosage, route, indication, response, notes,

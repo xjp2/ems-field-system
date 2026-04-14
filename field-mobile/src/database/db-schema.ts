@@ -160,9 +160,24 @@ export async function initializeDatabase(): Promise<void> {
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_interventions_patient ON interventions(patient_id)`);
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_sync_queue_retry ON sync_queue(retry_count)`);
     await db.runAsync(`CREATE INDEX IF NOT EXISTS idx_photos_incident ON photos(incident_id)`);
+
+    // Run migrations for schema updates
+    await runMigrations(db);
   });
 
   console.log('Database initialized successfully');
+}
+
+async function runMigrations(db: any): Promise<void> {
+  // Migration: Add hospital_id to incidents if missing
+  try {
+    await db.runAsync(`ALTER TABLE incidents ADD COLUMN hospital_id TEXT`);
+    console.log('Migration applied: Added hospital_id to incidents');
+  } catch (err: any) {
+    if (!err.message?.includes('duplicate column')) {
+      console.log('Migration note: hospital_id column already exists or other error:', err.message);
+    }
+  }
 }
 
 /**
