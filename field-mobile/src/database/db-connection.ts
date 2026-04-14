@@ -12,6 +12,8 @@ let db: SQLite.SQLiteDatabase | null = null;
 export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (!db) {
     db = await SQLite.openDatabaseAsync(DB_NAME);
+    // Enable foreign key constraints - required for ON DELETE CASCADE to work
+    await db.execAsync('PRAGMA foreign_keys = ON;');
   }
   return db;
 }
