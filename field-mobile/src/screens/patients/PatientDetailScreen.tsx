@@ -7,13 +7,14 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 
 import { Patient, Intervention, Vital } from '../../types/database';
 import { getPatientById } from '../../database/patients-db';
 import { getVitalsByPatient } from '../../database/vitals-db';
 import { getInterventionsByPatient } from '../../database/interventions-db';
+import { realtimeEvents } from '../../services/realtime.service';
 
 // Parse medical history to extract observations and notes
 function parseMedicalHistory(medicalHistory: string | undefined): {
@@ -161,6 +162,23 @@ export function PatientDetailScreen() {
     }, [loadData])
   );
 
+  // Listen for realtime updates
+  useEffect(() => {
+    const eventName = `incident:${incidentId}:changed`;
+    const handleDataChanged = () => {
+      console.log('PatientDetailScreen: Realtime update received, reloading...');
+      loadData();
+    };
+
+    realtimeEvents.on(eventName, handleDataChanged);
+    realtimeEvents.on('incidents:changed', handleDataChanged);
+    
+    return () => {
+      realtimeEvents.off(eventName, handleDataChanged);
+      realtimeEvents.off('incidents:changed', handleDataChanged);
+    };
+  }, [incidentId, loadData]);
+
   if (!patient) {
     return (
       <SafeAreaView style={styles.container}>
@@ -284,16 +302,27 @@ export function PatientDetailScreen() {
             </View>
             
             {vitals.map((vital, index) => (
-              <View key={vital.id} style={styles.vitalRecord}>
+              <TouchableOpacity 
+                key={vital.id} 
+                style={styles.vitalRecord}
+                onPress={() => (navigation as any).navigate('AddVital', { 
+                  patientId, 
+                  incidentId, 
+                  vitalId: vital.id,
+                  isEdit: true 
+                })}>
                 <View style={styles.vitalRecordHeader}>
                   <Text style={styles.vitalRecordTime}>
                     {new Date(vital.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
-                  {index === 0 && (
-                    <View style={styles.latestBadge}>
-                      <Text style={styles.latestBadgeText}>LATEST</Text>
-                    </View>
-                  )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {index === 0 && (
+                      <View style={styles.latestBadge}>
+                        <Text style={styles.latestBadgeText}>LATEST</Text>
+                      </View>
+                    )}
+                    <MaterialIcons name="edit" size={16} color="#6b7280" />
+                  </View>
                 </View>
                 
                 <View style={styles.vitalsGrid}>
@@ -334,11 +363,11 @@ export function PatientDetailScreen() {
                       <Text style={styles.vitalLabel}>Temp</Text>
                     </View>
                   )}
-                  {vital.gcs_total && (
-                    <View style={[styles.vitalItem, getVitalAlertStyle('gcs', vital.gcs_total)]}>
-                      <Text style={styles.vitalValue}>{vital.gcs_total}</Text>
-                      <Text style={styles.vitalUnit}>/15</Text>
-                      <Text style={styles.vitalLabel}>GCS</Text>
+                  {vital.blood_glucose && (
+                    <View style={styles.vitalItem}>
+                      <Text style={styles.vitalValue}>{vital.blood_glucose}</Text>
+                      <Text style={styles.vitalUnit}>mg/dL</Text>
+                      <Text style={styles.vitalLabel}>Glucose</Text>
                     </View>
                   )}
                 </View>
@@ -348,7 +377,7 @@ export function PatientDetailScreen() {
                 )}
                 
                 {index < vitals.length - 1 && <View style={styles.vitalDivider} />}
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -434,31 +463,34 @@ export function PatientDetailScreen() {
           )}
         </View>
 
-        {/* ACTION BUTTONS */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity 
-            style={[styles.actionBtn, styles.vitalBtn]}
-            onPress={() => {
-              console.log('Navigating to AddVital with:', { patientId, incidentId });
-              navigation.navigate('AddVital', { patientId, incidentId } as never);
-            }}
-          >
-            <MaterialIcons name="favorite" size={24} color="#fff" />
-            <Text style={styles.actionBtnText}>Add Vitals</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.actionBtn, styles.interventionBtn]}
-            onPress={() => {
-              console.log('Navigating to AddIntervention with:', { patientId, incidentId });
-              navigation.navigate('AddIntervention', { patientId, incidentId } as never);
-            }}
-          >
-            <MaterialIcons name="medication" size={24} color="#fff" />
-            <Text style={styles.actionBtnText}>Add Treatment</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Bottom padding for scroll */}
+        <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* FIXED ACTION BUTTONS - Always visible at bottom */}
+      <View style={styles.actionButtonsFixed}>
+        <TouchableOpacity 
+          style={[styles.actionBtn, styles.vitalBtn]}
+          onPress={() => {
+            console.log('Navigating to AddVital with:', { patientId, incidentId });
+            (navigation as any).navigate('AddVital', { patientId, incidentId });
+          }}
+        >
+          <MaterialIcons name="favorite" size={20} color="#fff" />
+          <Text style={styles.actionBtnText}>Add Vitals</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={[styles.actionBtn, styles.interventionBtn]}
+          onPress={() => {
+            console.log('Navigating to AddIntervention with:', { patientId, incidentId });
+            (navigation as any).navigate('AddIntervention', { patientId, incidentId });
+          }}
+        >
+          <MaterialIcons name="medication" size={20} color="#fff" />
+          <Text style={styles.actionBtnText}>Add Treatment</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
@@ -885,11 +917,18 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   // ACTION BUTTONS
-  actionButtons: {
+  actionButtonsFixed: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
-    marginBottom: 32,
+    padding: 16,
+    paddingBottom: 24,
+    backgroundColor: '#0f0f0f',
+    borderTopWidth: 1,
+    borderTopColor: '#2a2a2a',
   },
   actionBtn: {
     flex: 1,
@@ -897,7 +936,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
   },
   vitalBtn: {

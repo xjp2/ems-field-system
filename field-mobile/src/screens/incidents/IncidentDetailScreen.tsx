@@ -29,6 +29,7 @@ import { getIncidentById, updateIncident, getIncidentServerId } from '../../data
 import { getPatientsByIncident, getTriageCounts } from '../../database/patients-db';
 import { getPhotosByIncident, createPhoto } from '../../database/photos-db';
 import { reconcilePhotosForIncident } from '../../services/sync.service';
+import { realtimeEvents } from '../../services/realtime.service';
 import { addToSyncQueue } from '../../database/sync-queue';
 import { useSyncStore } from '../../stores/sync.store';
 
@@ -106,6 +107,23 @@ export function IncidentDetailScreen() {
         .catch(err => console.log('Sync/reconcile failed:', err.message));
     }, [loadData, incidentId, sync])
   );
+
+  // Listen for realtime updates to this specific incident
+  useEffect(() => {
+    const eventName = `incident:${incidentId}:changed`;
+    const handleIncidentChanged = () => {
+      console.log('IncidentDetailScreen: Realtime update received, reloading...');
+      loadData();
+    };
+
+    realtimeEvents.on(eventName, handleIncidentChanged);
+    realtimeEvents.on('incidents:changed', handleIncidentChanged);
+    
+    return () => {
+      realtimeEvents.off(eventName, handleIncidentChanged);
+      realtimeEvents.off('incidents:changed', handleIncidentChanged);
+    };
+  }, [incidentId, loadData]);
 
   const handleStatusUpdate = async (newStatus: IncidentStatus) => {
     if (!incident) return;

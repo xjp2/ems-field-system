@@ -9,6 +9,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { initializeDatabase } from './src/database/db-schema';
 import { useSyncStore } from './src/stores/sync.store';
+import { startRealtimeSubscriptions, stopRealtimeSubscriptions } from './src/services/realtime.service';
 
 // Initialize database on app start
 let dbInitialized = false;
@@ -34,9 +35,13 @@ export default function App() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        // App came to foreground - sync
+        // App came to foreground - sync and restart realtime
         sync();
         updateStatus();
+        startRealtimeSubscriptions();
+      } else if (nextAppState === 'background') {
+        // App went to background - stop realtime to save battery
+        stopRealtimeSubscriptions();
       }
     });
 
@@ -44,6 +49,14 @@ export default function App() {
       subscription.remove();
     };
   }, [sync, updateStatus]);
+
+  // Start realtime subscriptions when app mounts
+  useEffect(() => {
+    startRealtimeSubscriptions();
+    return () => {
+      stopRealtimeSubscriptions();
+    };
+  }, []);
 
   // Handle network changes
   useEffect(() => {
