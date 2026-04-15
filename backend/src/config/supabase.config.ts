@@ -186,8 +186,13 @@ export class SupabaseConfig {
    */
   getClientForUser(jwt: string): SupabaseClient {
     const url = this.configService.get<string>('SUPABASE_URL')!;
+    const key = this.configService.get<string>('SUPABASE_PUBLISHABLE_KEY') || this.configService.get<string>('SUPABASE_ANON_KEY');
     
-    return createClient(url, this.configService.get<string>('SUPABASE_PUBLISHABLE_KEY')!, {
+    if (!key) {
+      throw new Error('SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY must be configured');
+    }
+    
+    return createClient(url, key, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
