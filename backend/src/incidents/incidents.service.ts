@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { SupabaseConfig, Incident, IncidentStatus } from '../config/supabase.config';
 import { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { CreateIncidentDto } from './dto/create-incident.dto';
@@ -40,10 +40,7 @@ export class IncidentsService {
     if (error) {
       console.error('Supabase insert error:', JSON.stringify(error));
       console.error('Insert data:', JSON.stringify(insertData));
-      throw new HttpException(
-        `Failed to create incident: ${error.message} (code: ${(error as any).code || 'unknown'}, details: ${(error as any).details || 'none'})`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
-      );
+      throw new Error(`Failed to create incident: ${error.message} (code: ${(error as any).code || 'unknown'})`);
     }
 
     const incident = data as Incident;
