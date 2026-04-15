@@ -43,8 +43,12 @@ export class IncidentsService {
 
     const incident = data as Incident;
 
-    // Broadcast the new incident
-    this.realtimeService.broadcastIncidentCreated(incident);
+    // Broadcast the new incident (non-blocking - don't fail if realtime is down)
+    try {
+      this.realtimeService.broadcastIncidentCreated(incident);
+    } catch (broadcastErr: any) {
+      console.error('Failed to broadcast incident created:', broadcastErr.message);
+    }
 
     return incident;
   }
@@ -143,8 +147,12 @@ export class IncidentsService {
 
     const incident = data as Incident;
 
-    // Broadcast the update
-    this.realtimeService.broadcastIncidentUpdated(incident);
+    // Broadcast the update (non-blocking)
+    try {
+      this.realtimeService.broadcastIncidentUpdated(incident);
+    } catch (broadcastErr: any) {
+      console.error('Failed to broadcast incident updated:', broadcastErr.message);
+    }
 
     return incident;
   }
