@@ -118,6 +118,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Broadcast incident created event
    */
   broadcastIncidentCreated(incident: any) {
+    if (!this.server) {
+      this.logger.warn('WebSocket server not initialized, skipping broadcast');
+      return;
+    }
     const room = incident.hospital_id ? `hospital:${incident.hospital_id}` : 'hospital:default';
     this.server.to(room).emit('incident:created', incident);
     this.logger.debug(`Broadcast incident:created to ${room}`);
@@ -127,6 +131,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Broadcast incident updated event
    */
   broadcastIncidentUpdated(incident: any) {
+    if (!this.server) {
+      this.logger.warn('WebSocket server not initialized, skipping broadcast');
+      return;
+    }
     const hospitalRoom = incident.hospital_id ? `hospital:${incident.hospital_id}` : 'hospital:default';
     const incidentRoom = `incident:${incident.id}`;
     
@@ -143,6 +151,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Broadcast patient added event
    */
   broadcastPatientAdded(incidentId: string, patient: any) {
+    if (!this.server) {
+      this.logger.warn('WebSocket server not initialized, skipping broadcast');
+      return;
+    }
     const room = `incident:${incidentId}`;
     this.server.to(room).emit('patient:added', { incidentId, patient });
   }
@@ -151,6 +163,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Broadcast vitals added event
    */
   broadcastVitalsAdded(incidentId: string, patientId: string, vital: any) {
+    if (!this.server) {
+      this.logger.warn('WebSocket server not initialized, skipping broadcast');
+      return;
+    }
     const room = `incident:${incidentId}`;
     this.server.to(room).emit('vitals:added', { incidentId, patientId, vital });
   }
@@ -159,6 +175,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    * Broadcast intervention added event
    */
   broadcastInterventionAdded(incidentId: string, patientId: string, intervention: any) {
+    if (!this.server) {
+      this.logger.warn('WebSocket server not initialized, skipping broadcast');
+      return;
+    }
     const room = `incident:${incidentId}`;
     this.server.to(room).emit('intervention:added', { incidentId, patientId, intervention });
   }

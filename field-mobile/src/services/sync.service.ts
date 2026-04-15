@@ -9,6 +9,7 @@ import {
   updateIncidentServerId, 
   markIncidentSynced,
   getIncidentServerId,
+  getIncidentById,
 } from '../database/incidents-db';
 import { markPatientSynced, getPatientServerId } from '../database/patients-db';
 import { markVitalSynced, getVitalById } from '../database/vitals-db';
@@ -122,6 +123,13 @@ async function syncIncident(
 ): Promise<void> {
   switch (operation.operation) {
     case 'CREATE':
+      // Check if this incident was already synced (prevents duplicates on retry)
+      const localIncident = await getIncidentById(operation.local_id);
+      if (localIncident?.server_id) {
+        console.log('Incident already has server_id, skipping duplicate create:', localIncident.server_id);
+        return;
+      }
+
       const { data: created } = await api.post(
         endpoints.incidents.create(),
         payload
