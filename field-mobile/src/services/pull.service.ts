@@ -1,6 +1,6 @@
 import { api, endpoints } from '../config/api';
 import { Incident, Patient, Vital, Intervention, Photo } from '../types/database';
-import { executeSql, getOne } from '../database/db-connection';
+import { executeSql, getOne, querySql } from '../database/db-connection';
 import { getIncidentById, getAllIncidents } from '../database/incidents-db';
 import { getPhotosByIncident, createPhoto, deletePhoto } from '../database/photos-db';
 import { realtimeEvents } from './realtime.service';
@@ -47,6 +47,55 @@ export async function pullIncidents(): Promise<void> {
   // Notify screens to reload if any changes were made
   if (deletedCount > 0) {
     realtimeEvents.emit('incidents:changed');
+  }
+
+  // Clean up any duplicate incidents in local database
+  await cleanupDuplicateIncidents();
+}
+
+/**
+ * Remove duplicate incidents from local SQLite
+ * Keeps the most recent one when duplicates exist
+ */
+async function cleanupDuplicateIncidents(): Promise<void> {
+  // Find duplicates by server_id and keep the newest
+  const serverIdDups = await querySql<{ server_id: string; count: number }>(
+    `SELECT server_id, COUNT(*) as count FROM incidents 
+     WHERE server_id IS NOT NULL AND server_id != '' 
+     GROUP BY server_id HAVING count > 1`
+  );
+
+  for (const dup of serverIdDups) {
+    const rows = await querySql<{ id: string }>(
+      `SELECT id FROM incidents WHERE server_id = ? ORDER BY created_at DESC`,
+      [dup.server_id]
+    );
+    // Keep the first (newest), delete the rest
+    for (let i = 1; i < rows.length; i++) {
+      console.log('Deleting duplicate incident by server_id:', rows[i].id);
+      await safeExecute('DELETE FROM incidents WHERE id = ?', [rows[i].id]);
+      realtimeEvents.emit('incidents:changed');
+    }
+  }
+
+  // Find duplicates by local_id and keep the newest
+  const localIdDups = await querySql<{ local_id: string; count: number }>(
+    `SELECT local_id, COUNT(*) as count FROM incidents 
+     WHERE local_id IS NOT NULL AND local_id != '' 
+     GROUP BY local_id HAVING count > 1`
+  );
+
+  for (const dup of localIdDups) {
+    const rows = await querySql<{ id: string }>(
+      `SELECT id FROM incidents WHERE local_id = ? ORDER BY created_at DESC`,
+      [dup.local_id]
+    );
+    // Keep the first (newest), delete the rest
+    for (let i = 1; i < rows.length; i++) {
+      console.log('Deleting duplicate incident by local_id:', rows[i].id);
+      await safeExecute('DELETE FROM incidents WHERE id = ?', [rows[i].id]);
+      realtimeEvents.emit('incidents:changed');
+    }
   }
 }
 
