@@ -38,7 +38,9 @@ export class IncidentsService {
       .single();
 
     if (error) {
-      throw new Error(`Failed to create incident: ${error.message}`);
+      console.error('Supabase insert error:', JSON.stringify(error));
+      console.error('Insert data:', JSON.stringify(insertData));
+      throw new Error(`Failed to create incident: ${error.message} (code: ${(error as any).code || 'unknown'})`);
     }
 
     const incident = data as Incident;
