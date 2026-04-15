@@ -127,7 +127,7 @@ async function syncIncident(
       const localIncident = await getIncidentById(operation.local_id);
       if (localIncident?.server_id) {
         console.log('Incident already has server_id, skipping duplicate create:', localIncident.server_id);
-        return;
+        break;
       }
 
       const { data: created } = await api.post(
@@ -299,7 +299,7 @@ async function syncPhoto(
     const localPhoto = await getPhotoById(operation.local_id);
     if (localPhoto?.server_id) {
       console.log('Photo already has server_id, skipping duplicate upload:', localPhoto.server_id);
-      return;
+      break;
     }
 
     // Look up the server_id for the incident
