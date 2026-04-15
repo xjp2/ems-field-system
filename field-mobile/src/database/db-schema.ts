@@ -178,6 +178,16 @@ async function runMigrations(db: any): Promise<void> {
       console.log('Migration note: hospital_id column already exists or other error:', err.message);
     }
   }
+
+  // Migration: Add local_id to patients if missing
+  try {
+    await db.runAsync(`ALTER TABLE patients ADD COLUMN local_id TEXT`);
+    console.log('Migration applied: Added local_id to patients');
+  } catch (err: any) {
+    if (!err.message?.includes('duplicate column')) {
+      console.log('Migration note: local_id column already exists or other error:', err.message);
+    }
+  }
 }
 
 /**
