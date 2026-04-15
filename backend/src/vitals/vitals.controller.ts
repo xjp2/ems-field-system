@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VitalsService, CreateVitalDto } from './vitals.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -41,5 +41,17 @@ export class VitalsController {
     @Param('id') id: string,
   ) {
     return this.vitalsService.findOne(user, id);
+  }
+
+  @Patch(':id')
+  @Roles('FIELD', 'ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Update vital signs' })
+  async update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateVitalDto,
+  ) {
+    return this.vitalsService.update(user, id, dto);
   }
 }

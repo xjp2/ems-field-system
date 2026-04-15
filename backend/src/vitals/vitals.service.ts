@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, HttpException, HttpStatus } from '@nestjs/common';
 import { SupabaseConfig, Vital } from '../config/supabase.config';
 import { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -43,24 +43,32 @@ export class VitalsService {
       .single();
 
     if (error) {
-      throw new Error(`Failed to record vital: ${error.message}`);
+      console.error('Supabase vital insert error:', JSON.stringify(error));
+      throw new HttpException(
+        `Failed to record vital: ${error.message} (code: ${(error as any).code || 'unknown'})`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
 
     const vital = data as Vital;
 
     // Get incident_id for broadcasting
-    const { data: patient } = await client
-      .from('patients')
-      .select('incident_id')
-      .eq('id', dto.patient_id)
-      .single();
+    try {
+      const { data: patient } = await client
+        .from('patients')
+        .select('incident_id')
+        .eq('id', dto.patient_id)
+        .single();
 
-    if (patient) {
-      this.realtimeService.broadcastVitalsAdded(
-        patient.incident_id,
-        dto.patient_id,
-        vital,
-      );
+      if (patient) {
+        this.realtimeService.broadcastVitalsAdded(
+          patient.incident_id,
+          dto.patient_id,
+          vital,
+        );
+      }
+    } catch (broadcastErr: any) {
+      console.error('Failed to broadcast vital added:', broadcastErr.message);
     }
 
     return vital;
@@ -80,6 +88,23 @@ export class VitalsService {
     }
 
     return (data || []) as Vital[];
+  }
+
+  async update(user: AuthenticatedUser, id: string, dto: CreateVitalDto): Promise<Vital> {
+    const client = this.supabaseConfig.getClientForUser(user.jwt);
+
+    const { data, error } = await client
+      .from('vitals')
+      .update({ ...dto, created_by: user.id })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new NotFoundException('Vital not found or update failed');
+    }
+
+    return data as Vital;
   }
 
   async findOne(user: AuthenticatedUser, id: string): Promise<Vital> {
