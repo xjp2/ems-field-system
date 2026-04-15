@@ -189,6 +189,7 @@ async function syncPatient(
 ): Promise<void> {
   console.log('Syncing patient:', { 
     local_id: operation.local_id, 
+    operation: operation.operation,
     incident_id: payload.incident_id,
     has_incident_id: !!payload.incident_id 
   });
@@ -227,6 +228,27 @@ async function syncPatient(
         created.id,
         created.incident_id
       );
+      break;
+      
+    case 'UPDATE':
+      if (!operation.server_id) {
+        throw new Error('Cannot update patient: no server_id');
+      }
+      
+      // Look up the server_id for the incident
+      const updateServerIncidentId = await getIncidentServerId(payload.incident_id);
+      if (!updateServerIncidentId) {
+        throw new Error(`Incident ${payload.incident_id} not yet synced to server. Will retry after incident syncs.`);
+      }
+      
+      const updatePayload = {
+        ...payload,
+        incident_id: updateServerIncidentId,
+      };
+      
+      console.log('Updating patient with server id:', operation.server_id);
+      await api.patch(endpoints.patients.update(operation.server_id), updatePayload);
+      await markPatientSynced(operation.local_id, operation.server_id, updateServerIncidentId);
       break;
       
     default:

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PatientsService, CreatePatientDto } from './patients.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -41,5 +41,17 @@ export class PatientsController {
     @Param('id') id: string,
   ) {
     return this.patientsService.findOne(user, id);
+  }
+
+  @Patch(':id')
+  @Roles('FIELD', 'ADMIN')
+  @UseGuards(RolesGuard)
+  @ApiOperation({ summary: 'Update patient' })
+  async update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreatePatientDto,
+  ) {
+    return this.patientsService.update(user, id, dto);
   }
 }

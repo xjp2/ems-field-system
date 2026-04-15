@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,10 @@ import {
   Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
-import { createPatient } from '../../database/patients-db';
+import { createPatient, updatePatient, getPatientById } from '../../database/patients-db';
 import { addToSyncQueue } from '../../database/sync-queue';
 import { useSyncStore } from '../../stores/sync.store';
 import { TriageLevel } from '../../types/database';
@@ -45,7 +45,7 @@ const OBSERVATION_TAGS = [
 export function NewPatientScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { incidentId } = route.params as { incidentId: string };
+  const { incidentId, patientId, isEdit } = route.params as { incidentId: string; patientId?: string; isEdit?: boolean };
   const { sync } = useSyncStore();
 
   const [triage, setTriage] = useState<TriageLevel | null>(null);
@@ -57,7 +57,54 @@ export function NewPatientScreen() {
   const [observations, setObservations] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(isEdit);
   const [genderModalVisible, setGenderModalVisible] = useState(false);
+
+  // Load existing patient if editing
+  useEffect(() => {
+    if (isEdit && patientId) {
+      loadPatient(patientId);
+    }
+  }, [isEdit, patientId]);
+
+  const loadPatient = async (id: string) => {
+    try {
+      const patient = await getPatientById(id);
+      if (patient) {
+        setTriage(patient.triage_priority || null);
+        setFirstName(patient.first_name || '');
+        setLastName(patient.last_name || '');
+        setGender(patient.gender || '');
+        setCondition(patient.chief_complaint || '');
+        
+        // Parse age from DOB
+        if (patient.date_of_birth) {
+          const birthYear = parseInt(patient.date_of_birth.split('-')[0]);
+          const ageNum = new Date().getFullYear() - birthYear;
+          if (ageNum >= 0 && ageNum <= 150) {
+            setAge(ageNum.toString());
+          }
+        }
+        
+        // Parse observations and notes from medical_history
+        if (patient.medical_history) {
+          const obsMatch = patient.medical_history.match(/Initial Observations: (.+?)(?:\n\nNotes:|$)/s);
+          const notesMatch = patient.medical_history.match(/Notes: (.+)$/s);
+          if (obsMatch) {
+            setObservations(obsMatch[1].split(', ').filter(Boolean));
+          }
+          if (notesMatch) {
+            setNotes(notesMatch[1].trim());
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load patient:', err);
+      Alert.alert('Error', 'Failed to load patient data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const toggleObservation = (tag: string) => {
     setObservations(prev =>
@@ -104,31 +151,57 @@ export function NewPatientScreen() {
       const medicalHistory = medicalHistoryParts.join('\n\n') || undefined;
       const dateOfBirth = calculateDOB(age);
 
-      // Create patient locally
-      const patient = await createPatient({
-        incident_id: incidentId,
-        first_name: firstName.trim() || undefined,
-        last_name: lastName.trim() || undefined,
-        gender: (gender as any) || undefined,
-        date_of_birth: dateOfBirth,
-        triage_priority: triage,
-        chief_complaint: condition.trim(),
-        observations,
-        medical_history: medicalHistory,
-      });
+      if (isEdit && patientId) {
+        // Update existing patient
+        await updatePatient(patientId, {
+          first_name: firstName.trim() || undefined,
+          last_name: lastName.trim() || undefined,
+          gender: (gender as any) || undefined,
+          date_of_birth: dateOfBirth,
+          triage_priority: triage,
+          chief_complaint: condition.trim(),
+          observations,
+          medical_history: medicalHistory,
+        });
 
-      // Add to sync queue
-      await addToSyncQueue('patients', patient.id, 'CREATE', {
-        incident_id: incidentId,
-        first_name: firstName.trim() || undefined,
-        last_name: lastName.trim() || undefined,
-        gender: gender || undefined,
-        date_of_birth: dateOfBirth,
-        triage_priority: triage,
-        chief_complaint: condition.trim(),
-        observations,
-        medical_history: medicalHistory,
-      });
+        await addToSyncQueue('patients', patientId, 'UPDATE', {
+          incident_id: incidentId,
+          first_name: firstName.trim() || undefined,
+          last_name: lastName.trim() || undefined,
+          gender: gender || undefined,
+          date_of_birth: dateOfBirth,
+          triage_priority: triage,
+          chief_complaint: condition.trim(),
+          observations,
+          medical_history: medicalHistory,
+        });
+      } else {
+        // Create patient locally
+        const patient = await createPatient({
+          incident_id: incidentId,
+          first_name: firstName.trim() || undefined,
+          last_name: lastName.trim() || undefined,
+          gender: (gender as any) || undefined,
+          date_of_birth: dateOfBirth,
+          triage_priority: triage,
+          chief_complaint: condition.trim(),
+          observations,
+          medical_history: medicalHistory,
+        });
+
+        // Add to sync queue
+        await addToSyncQueue('patients', patient.id, 'CREATE', {
+          incident_id: incidentId,
+          first_name: firstName.trim() || undefined,
+          last_name: lastName.trim() || undefined,
+          gender: gender || undefined,
+          date_of_birth: dateOfBirth,
+          triage_priority: triage,
+          chief_complaint: condition.trim(),
+          observations,
+          medical_history: medicalHistory,
+        });
+      }
 
       // Trigger immediate sync (fire and forget)
       sync().catch(err => console.log('Patient auto-sync failed:', err.message));
@@ -152,6 +225,23 @@ export function NewPatientScreen() {
     return option ? option.label : 'Select Sex';
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <MaterialIcons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{isEdit ? 'Edit Patient' : 'Add Patient'}</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontSize: 16 }}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -159,7 +249,7 @@ export function NewPatientScreen() {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <MaterialIcons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Patient</Text>
+        <Text style={styles.headerTitle}>{isEdit ? 'Edit Patient' : 'Add Patient'}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -322,7 +412,7 @@ export function NewPatientScreen() {
           disabled={saving}
         >
           <Text style={styles.saveButtonText}>
-            {saving ? 'SAVING...' : 'SAVE PATIENT'}
+            {saving ? 'SAVING...' : (isEdit ? 'UPDATE PATIENT' : 'SAVE PATIENT')}
           </Text>
         </TouchableOpacity>
       </ScrollView>

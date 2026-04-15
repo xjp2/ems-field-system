@@ -108,6 +108,63 @@ export class PatientsService {
     return (data || []) as Patient[];
   }
 
+  async update(user: AuthenticatedUser, id: string, dto: CreatePatientDto): Promise<Patient> {
+    const client = this.supabaseConfig.getClientForUser(user.jwt);
+
+    // Map triage_priority to priority if provided
+    let priority = dto.priority;
+    if (!priority && dto.triage_priority) {
+      const triageMap: Record<string, string> = {
+        red: 'critical',
+        yellow: 'urgent',
+        green: 'non_urgent',
+        black: 'expectant',
+      };
+      priority = triageMap[dto.triage_priority] as any;
+    }
+
+    // Normalize gender to lowercase
+    const gender = dto.gender ? dto.gender.toLowerCase() as any : undefined;
+
+    const payload: any = {
+      incident_id: dto.incident_id,
+      first_name: dto.first_name,
+      last_name: dto.last_name,
+      date_of_birth: dto.date_of_birth,
+      gender,
+      mrn: dto.mrn,
+      emergency_contact_name: dto.emergency_contact_name,
+      emergency_contact_phone: dto.emergency_contact_phone,
+      chief_complaint: dto.chief_complaint,
+      medical_history: dto.medical_history,
+      priority,
+      local_id: dto.local_id,
+      updated_by: user.id,
+    };
+
+    if (dto.observations && dto.observations.length > 0) {
+      const observationsText = dto.observations.join(', ');
+      if (!payload.medical_history) {
+        payload.medical_history = `Observations: ${observationsText}`;
+      } else {
+        payload.medical_history = `${payload.medical_history}\nObservations: ${observationsText}`;
+      }
+    }
+
+    const { data, error } = await client
+      .from('patients')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      throw new NotFoundException('Patient not found or update failed');
+    }
+
+    return data as Patient;
+  }
+
   async findOne(user: AuthenticatedUser, id: string): Promise<Patient> {
     const client = this.supabaseConfig.getClientForUser(user.jwt);
 

@@ -206,7 +206,9 @@ export function PatientDetailScreen() {
             #{patientId.slice(-6).toUpperCase()}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => { /* Edit patient */ }}>
+        <TouchableOpacity onPress={() => {
+          (navigation as any).navigate('NewPatient', { incidentId, patientId, isEdit: true });
+        }}>
           <MaterialIcons name="edit" size={24} color="#9ca3af" />
         </TouchableOpacity>
       </View>

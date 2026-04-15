@@ -49,6 +49,7 @@ export const endpoints = {
   },
   patients: {
     create: () => '/patients',
+    update: (id: string) => `/patients/${id}`,
     get: (id: string) => `/patients/${id}`,
     byIncident: (incidentId: string) => `/patients/incident/${incidentId}`,
   },
