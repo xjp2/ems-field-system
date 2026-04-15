@@ -299,13 +299,26 @@ async function syncPhoto(
     const localPhoto = await getPhotoById(operation.local_id);
     if (localPhoto?.server_id) {
       console.log('Photo already has server_id, skipping duplicate upload:', localPhoto.server_id);
-      break;
+      return;
     }
 
     // Look up the server_id for the incident
     const serverIncidentId = await getIncidentServerId(payload.incident_id);
     if (!serverIncidentId) {
       throw new Error(`Incident ${payload.incident_id} not yet synced to server. Will retry after incident syncs.`);
+    }
+    
+    // Check if photos already exist on server before uploading (prevents duplicates)
+    try {
+      const { data: serverPhotos } = await api.get(endpoints.photos.byIncident(serverIncidentId));
+      if (serverPhotos && serverPhotos.length > 0) {
+        const serverPhoto = serverPhotos[0];
+        console.log('Server photos already exist for incident, skipping upload:', serverPhoto.id);
+        await markPhotoAsSynced(operation.local_id, serverPhoto.id, serverPhoto.public_url);
+        return;
+      }
+    } catch (err: any) {
+      console.log('Could not check server photos, will proceed with upload:', err.message);
     }
     
     // Replace local incident_id with server incident_id
@@ -369,6 +382,7 @@ export async function reconcilePhotosForIncident(incidentId: string): Promise<vo
     // Get local photos
     const localPhotos = await getPhotosByIncident(incidentId);
     const syncedLocalPhotos = localPhotos.filter(p => p.is_synced && p.server_id);
+    const unsyncedLocalPhotos = localPhotos.filter(p => !p.is_synced && !p.server_id);
     
     // Delete local synced photos that no longer exist on server
     for (const localPhoto of syncedLocalPhotos) {
@@ -378,20 +392,27 @@ export async function reconcilePhotosForIncident(incidentId: string): Promise<vo
       }
     }
     
-    // Add server photos that don't exist locally
+    // Reconcile server photos with local ones
     const localServerIds = new Set(localPhotos.map(p => p.server_id).filter(Boolean));
     for (const serverPhoto of serverPhotoList) {
       if (!localServerIds.has(serverPhoto.id)) {
-        console.log('Adding server photo to local:', serverPhoto.id);
-        await createPhoto({
-          incident_id: incidentId,
-          uri: serverPhoto.public_url,
-          caption: serverPhoto.caption,
-          taken_at: serverPhoto.taken_at,
-          server_id: serverPhoto.id,
-          server_incident_id: serverIncidentId,
-          is_synced: true,
-        });
+        // If there's an unsynced local photo, update it instead of creating a duplicate
+        const matchingUnsynced = unsyncedLocalPhotos.shift();
+        if (matchingUnsynced) {
+          console.log('Updating local unsynced photo with server info:', matchingUnsynced.id, '->', serverPhoto.id);
+          await markPhotoAsSynced(matchingUnsynced.id, serverPhoto.id, serverPhoto.public_url);
+        } else {
+          console.log('Adding server photo to local:', serverPhoto.id);
+          await createPhoto({
+            incident_id: incidentId,
+            uri: serverPhoto.public_url,
+            caption: serverPhoto.caption,
+            taken_at: serverPhoto.taken_at,
+            server_id: serverPhoto.id,
+            server_incident_id: serverIncidentId,
+            is_synced: true,
+          });
+        }
       }
     }
   } catch (error: any) {

@@ -19,6 +19,19 @@ export class IncidentsService {
   async create(user: AuthenticatedUser, dto: CreateIncidentDto): Promise<Incident> {
     const client = this.supabaseConfig.getClientForUser(user.jwt);
 
+    // Idempotency: if local_id was already synced, return existing incident
+    if (dto.local_id) {
+      const { data: existing, error: findError } = await client
+        .from('incidents')
+        .select('*')
+        .eq('local_id', dto.local_id)
+        .single();
+      if (existing) {
+        console.log('Incident with local_id already exists, returning existing:', existing.id);
+        return existing as Incident;
+      }
+    }
+
     // Build the insert data with status timestamps
     const insertData: any = {
       ...dto,
