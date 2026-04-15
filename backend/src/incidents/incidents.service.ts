@@ -53,6 +53,20 @@ export class IncidentsService {
     if (error) {
       console.error('Supabase insert error:', JSON.stringify(error));
       console.error('Insert data:', JSON.stringify(insertData));
+
+      // Race-condition recovery: if another request beat us, try to fetch by local_id again
+      if ((error as any).code === '23505' && dto.local_id) {
+        const { data: raceExisting } = await client
+          .from('incidents')
+          .select('*')
+          .eq('local_id', dto.local_id)
+          .single();
+        if (raceExisting) {
+          console.log('Race condition resolved: returning existing incident by local_id:', raceExisting.id);
+          return raceExisting as Incident;
+        }
+      }
+
       throw new HttpException(
         `Failed to create incident: ${error.message} (code: ${(error as any).code || 'unknown'}, details: ${(error as any).details || 'none'}, hint: ${(error as any).hint || 'none'})`,
         HttpStatus.INTERNAL_SERVER_ERROR,

@@ -51,12 +51,54 @@ export async function pullIncidents(): Promise<void> {
 
   // Clean up any duplicate incidents in local database
   await cleanupDuplicateIncidents();
+
+  // Clean up any duplicate photos in local database
+  await cleanupDuplicatePhotos();
 }
 
 /**
  * Remove duplicate incidents from local SQLite
  * Keeps the most recent one when duplicates exist
  */
+async function cleanupDuplicatePhotos(): Promise<void> {
+  // Find duplicates by server_id and keep the newest
+  const serverIdDups = await querySql<{ server_id: string; count: number }>(
+    `SELECT server_id, COUNT(*) as count FROM photos 
+     WHERE server_id IS NOT NULL AND server_id != '' 
+     GROUP BY server_id HAVING count > 1`
+  );
+
+  for (const dup of serverIdDups) {
+    const rows = await querySql<{ id: string }>(
+      `SELECT id FROM photos WHERE server_id = ? ORDER BY created_at DESC`,
+      [dup.server_id]
+    );
+    // Keep the first (newest), delete the rest
+    for (let i = 1; i < rows.length; i++) {
+      console.log('Deleting duplicate photo by server_id:', rows[i].id);
+      await safeExecute('DELETE FROM photos WHERE id = ?', [rows[i].id]);
+    }
+  }
+
+  // Find duplicates by uri for unsynced photos and keep the newest
+  const uriDups = await querySql<{ uri: string; count: number }>(
+    `SELECT uri, COUNT(*) as count FROM photos 
+     WHERE server_id IS NULL OR server_id = '' 
+     GROUP BY uri HAVING count > 1`
+  );
+
+  for (const dup of uriDups) {
+    const rows = await querySql<{ id: string }>(
+      `SELECT id FROM photos WHERE uri = ? AND (server_id IS NULL OR server_id = '') ORDER BY created_at DESC`,
+      [dup.uri]
+    );
+    for (let i = 1; i < rows.length; i++) {
+      console.log('Deleting duplicate unsynced photo by uri:', rows[i].id);
+      await safeExecute('DELETE FROM photos WHERE id = ?', [rows[i].id]);
+    }
+  }
+}
+
 async function cleanupDuplicateIncidents(): Promise<void> {
   // Find duplicates by server_id and keep the newest
   const serverIdDups = await querySql<{ server_id: string; count: number }>(

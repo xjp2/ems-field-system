@@ -316,7 +316,7 @@ export function NewIncidentScreen() {
 
       // Create incident locally with all data
       const incident = await createIncident({
-        incident_number: `INC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 10000)).padStart(4, '0')}`,
+        incident_number: `INC-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`,
         address,
         latitude: latitude || undefined,
         longitude: longitude || undefined,

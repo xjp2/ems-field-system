@@ -19,10 +19,28 @@ import { SyncResult, SyncQueueEntry } from '../types/database';
 
 const MAX_RETRIES = 5;
 
+let syncPromise: Promise<SyncResult> | null = null;
+
 /**
  * Main sync function - processes pending operations
+ * Prevents concurrent execution by reusing an in-flight promise
  */
 export async function syncWithServer(): Promise<SyncResult> {
+  if (syncPromise) {
+    console.log('Sync already in progress, waiting for it to complete...');
+    return syncPromise;
+  }
+
+  syncPromise = runSyncWithServer();
+  try {
+    const result = await syncPromise;
+    return result;
+  } finally {
+    syncPromise = null;
+  }
+}
+
+async function runSyncWithServer(): Promise<SyncResult> {
   const result: SyncResult = {
     success: true,
     operations_completed: 0,

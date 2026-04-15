@@ -4,6 +4,22 @@ import { v4 as uuidv4 } from 'uuid';
 
 export async function createPhoto(photo: Omit<Photo, 'id' | 'created_at' | 'is_synced'> & { id?: string; created_at?: string; is_synced?: boolean }): Promise<Photo> {
   const db = await getDatabase();
+
+  // Idempotency: don't insert duplicate server photos
+  if (photo.server_id) {
+    const existing = await db.getFirstAsync<Photo>(
+      `SELECT * FROM photos WHERE server_id = ?`,
+      [photo.server_id]
+    );
+    if (existing) {
+      console.log('Photo with server_id already exists locally, skipping create:', photo.server_id);
+      return {
+        ...existing,
+        is_synced: Boolean(existing.is_synced),
+      };
+    }
+  }
+
   const now = new Date().toISOString();
   const photoRecord: Photo = {
     id: photo.id || uuidv4(),
