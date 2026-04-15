@@ -203,6 +203,24 @@ export async function getTriageCounts(incidentId: string): Promise<{
 }
 
 /**
+ * Get patient by server_id
+ */
+export async function getPatientByServerId(serverId: string): Promise<Patient | null> {
+  const result = await getOne<Patient & { observations: string }>(
+    `SELECT * FROM patients WHERE server_id = ?`,
+    [serverId]
+  );
+  if (result) {
+    return {
+      ...result,
+      is_synced: Boolean(result.is_synced),
+      observations: result.observations ? JSON.parse(result.observations) : [],
+    };
+  }
+  return null;
+}
+
+/**
  * Get server_id for a local patient
  */
 export async function getPatientServerId(localId: string): Promise<string | null> {

@@ -3,6 +3,7 @@ import { Incident, Patient, Vital, Intervention, Photo } from '../types/database
 import { executeSql, getOne, querySql } from '../database/db-connection';
 import { getIncidentById, getIncidentByServerId, getAllIncidents } from '../database/incidents-db';
 import { getPhotosByIncident, createPhoto, deletePhoto } from '../database/photos-db';
+import { getPatientByServerId } from '../database/patients-db';
 import { realtimeEvents } from './realtime.service';
 
 /**
@@ -340,20 +341,36 @@ async function upsertIncident(incident: any): Promise<void> {
 }
 
 async function upsertPatient(patient: any): Promise<void> {
-  const existing = await getOne<{ id: string; is_synced: number }>(
+  // Find existing patient by server_id or local id
+  let existing = await getOne<{ id: string; is_synced: number }>(
     'SELECT id, is_synced FROM patients WHERE id = ?',
     [patient.id]
   );
+  if (!existing) {
+    existing = await getOne<{ id: string; is_synced: number }>(
+      'SELECT id, is_synced FROM patients WHERE server_id = ?',
+      [patient.id]
+    );
+  }
 
   if (existing && !existing.is_synced) {
-    console.log('Skipping server patient update - local has unsynced changes:', patient.id);
+    console.log('Skipping server patient update - local has unsynced changes:', existing.id);
     return;
   }
 
+  // Resolve local incident_id from server incident_id
+  let localIncidentId = patient.incident_id;
+  const localIncident = await getIncidentByServerId(patient.incident_id);
+  if (localIncident) {
+    localIncidentId = localIncident.id;
+  }
+
+  const localPatientId = existing ? existing.id : patient.id;
+
   const params = [
-    patient.id,
+    localPatientId,
     patient.id, // server_id
-    patient.incident_id,
+    localIncidentId,
     patient.incident_id, // server_incident_id
     patient.first_name || null,
     patient.last_name || null,
@@ -383,7 +400,7 @@ async function upsertPatient(patient: any): Promise<void> {
         chief_complaint = ?, medical_history = ?, triage_priority = ?, observations = ?, triaged_at = ?,
         local_id = ?, created_at = ?, updated_at = ?, created_by = ?, updated_by = ?, is_synced = ?
       WHERE id = ?`,
-      [...params, patient.id]
+      [...params, existing.id]
     );
   } else {
     await safeExecute(
@@ -409,10 +426,19 @@ async function upsertVital(vital: any): Promise<void> {
     return;
   }
 
+  // Resolve local patient_id from server patient_id
+  let localPatientId = vital.patient_id;
+  const localPatient = await getPatientByServerId(vital.patient_id);
+  if (localPatient) {
+    localPatientId = localPatient.id;
+  }
+
+  const localVitalId = existing ? existing.id : vital.id;
+
   const params = [
-    vital.id,
+    localVitalId,
     vital.id, // server_id
-    vital.patient_id,
+    localPatientId,
     vital.patient_id, // server_patient_id
     vital.recorded_at,
     vital.blood_pressure_systolic || null,
@@ -443,7 +469,7 @@ async function upsertVital(vital: any): Promise<void> {
         temperature = ?, blood_glucose = ?, gcs_total = ?, gcs_eye = ?, gcs_verbal = ?, gcs_motor = ?,
         pain_score = ?, etco2 = ?, notes = ?, local_id = ?, created_at = ?, created_by = ?, is_synced = ?
       WHERE id = ?`,
-      [...params, vital.id]
+      [...params, existing.id]
     );
   } else {
     await safeExecute(
@@ -469,10 +495,19 @@ async function upsertIntervention(intervention: any): Promise<void> {
     return;
   }
 
+  // Resolve local patient_id from server patient_id
+  let localPatientId = intervention.patient_id;
+  const localPatient = await getPatientByServerId(intervention.patient_id);
+  if (localPatient) {
+    localPatientId = localPatient.id;
+  }
+
+  const localInterventionId = existing ? existing.id : intervention.id;
+
   const params = [
-    intervention.id,
+    localInterventionId,
     intervention.id, // server_id
-    intervention.patient_id,
+    localPatientId,
     intervention.patient_id, // server_patient_id
     intervention.performed_at,
     intervention.type || 'other',
@@ -495,7 +530,7 @@ async function upsertIntervention(intervention: any): Promise<void> {
         name = ?, dosage = ?, route = ?, indication = ?, response = ?, notes = ?,
         local_id = ?, created_at = ?, created_by = ?, is_synced = ?
       WHERE id = ?`,
-      [...params, intervention.id]
+      [...params, existing.id]
     );
   } else {
     await safeExecute(
