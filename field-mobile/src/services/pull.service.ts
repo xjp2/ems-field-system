@@ -380,7 +380,7 @@ async function upsertPatient(patient: any): Promise<void> {
       `UPDATE patients SET
         server_id = ?, incident_id = ?, server_incident_id = ?, first_name = ?, last_name = ?,
         date_of_birth = ?, gender = ?, mrn = ?, emergency_contact_name = ?, emergency_contact_phone = ?,
-        chief_complaint = ?, medical_history = ?, priority = ?, observations = ?, triaged_at = ?,
+        chief_complaint = ?, medical_history = ?, triage_priority = ?, observations = ?, triaged_at = ?,
         local_id = ?, created_at = ?, updated_at = ?, created_by = ?, updated_by = ?, is_synced = ?
       WHERE id = ?`,
       [...params, patient.id]
@@ -390,7 +390,7 @@ async function upsertPatient(patient: any): Promise<void> {
       `INSERT INTO patients (
         id, server_id, incident_id, server_incident_id, first_name, last_name,
         date_of_birth, gender, mrn, emergency_contact_name, emergency_contact_phone,
-        chief_complaint, medical_history, priority, observations, triaged_at,
+        chief_complaint, medical_history, triage_priority, observations, triaged_at,
         local_id, created_at, updated_at, created_by, updated_by, is_synced
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params
