@@ -13,6 +13,7 @@ import {
   Dimensions,
   Image,
   FlatList,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -958,6 +959,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a1a',
     borderBottomWidth: 1,
     borderBottomColor: '#2a2a2a',
+    paddingTop: Platform.OS === 'ios' ? 16 : (StatusBar.currentHeight || 8),
   },
   mapHeader: {
     flexDirection: 'row',
