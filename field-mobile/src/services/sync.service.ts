@@ -80,13 +80,22 @@ async function runSyncWithServer(): Promise<SyncResult> {
       await processOperation(operation);
       result.operations_completed++;
       console.log(`✓ Synced: ${operation.table_name} ${operation.local_id}`);
+      // Small yield between operations to let the JS thread handle realtime events
+      await new Promise(resolve => setTimeout(resolve, 50));
     } catch (error: any) {
       const errorMsg = error.response?.data?.message || error.message || 'Unknown error';
+      const isNetworkError = !error.response && (error.code === 'ERR_NETWORK' || error.message === 'Network Error');
       
       // Check if this is a "dependency not ready" error (incident not synced yet)
       if (errorMsg.includes('not yet synced to server')) {
         console.log(`⏳ Skipping ${operation.table_name} ${operation.local_id}: ${errorMsg}`);
         // Don't mark as error - it will retry next sync
+        continue;
+      }
+      
+      if (isNetworkError) {
+        console.log(`⏳ Network error for ${operation.table_name} ${operation.local_id}, will retry: ${errorMsg}`);
+        // Don't count network errors as failures - they are transient
         continue;
       }
       
