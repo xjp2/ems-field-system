@@ -194,6 +194,23 @@ export async function getIncidentCount(): Promise<number> {
 }
 
 /**
+ * Get incident by server_id
+ */
+export async function getIncidentByServerId(serverId: string): Promise<Incident | null> {
+  const result = await getOne<Incident>(
+    `SELECT * FROM incidents WHERE server_id = ?`,
+    [serverId]
+  );
+  if (result) {
+    return {
+      ...result,
+      is_synced: Boolean(result.is_synced),
+    };
+  }
+  return null;
+}
+
+/**
  * Get server_id for a local incident
  */
 export async function getIncidentServerId(localId: string): Promise<string | null> {

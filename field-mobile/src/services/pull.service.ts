@@ -1,7 +1,7 @@
 import { api, endpoints } from '../config/api';
 import { Incident, Patient, Vital, Intervention, Photo } from '../types/database';
 import { executeSql, getOne, querySql } from '../database/db-connection';
-import { getIncidentById, getAllIncidents } from '../database/incidents-db';
+import { getIncidentById, getIncidentByServerId, getAllIncidents } from '../database/incidents-db';
 import { getPhotosByIncident, createPhoto, deletePhoto } from '../database/photos-db';
 import { realtimeEvents } from './realtime.service';
 
@@ -70,10 +70,15 @@ async function cleanupDuplicateIncidents(): Promise<void> {
       `SELECT id FROM incidents WHERE server_id = ? ORDER BY created_at DESC`,
       [dup.server_id]
     );
-    // Keep the first (newest), delete the rest
+    const keepId = rows[0].id;
+    // Migrate related records and delete the rest
     for (let i = 1; i < rows.length; i++) {
-      console.log('Deleting duplicate incident by server_id:', rows[i].id);
-      await safeExecute('DELETE FROM incidents WHERE id = ?', [rows[i].id]);
+      const deleteId = rows[i].id;
+      console.log('Migrating photos/patients from duplicate incident', deleteId, 'to', keepId);
+      await safeExecute('UPDATE photos SET incident_id = ? WHERE incident_id = ?', [keepId, deleteId]);
+      await safeExecute('UPDATE patients SET incident_id = ? WHERE incident_id = ?', [keepId, deleteId]);
+      console.log('Deleting duplicate incident by server_id:', deleteId);
+      await safeExecute('DELETE FROM incidents WHERE id = ?', [deleteId]);
       realtimeEvents.emit('incidents:changed');
     }
   }
@@ -90,10 +95,15 @@ async function cleanupDuplicateIncidents(): Promise<void> {
       `SELECT id FROM incidents WHERE local_id = ? ORDER BY created_at DESC`,
       [dup.local_id]
     );
-    // Keep the first (newest), delete the rest
+    const keepId = rows[0].id;
+    // Migrate related records and delete the rest
     for (let i = 1; i < rows.length; i++) {
-      console.log('Deleting duplicate incident by local_id:', rows[i].id);
-      await safeExecute('DELETE FROM incidents WHERE id = ?', [rows[i].id]);
+      const deleteId = rows[i].id;
+      console.log('Migrating photos/patients from duplicate incident', deleteId, 'to', keepId);
+      await safeExecute('UPDATE photos SET incident_id = ? WHERE incident_id = ?', [keepId, deleteId]);
+      await safeExecute('UPDATE patients SET incident_id = ? WHERE incident_id = ?', [keepId, deleteId]);
+      console.log('Deleting duplicate incident by local_id:', deleteId);
+      await safeExecute('DELETE FROM incidents WHERE id = ?', [deleteId]);
       realtimeEvents.emit('incidents:changed');
     }
   }
@@ -199,12 +209,16 @@ async function safeExecute(sql: string, params: any[]): Promise<void> {
 }
 
 async function upsertIncident(incident: any): Promise<void> {
-  const existing = await getIncidentById(incident.id);
+  // Check by local id first, then by server_id to avoid creating duplicates
+  let existing = await getIncidentById(incident.id);
+  if (!existing) {
+    existing = await getIncidentByServerId(incident.id);
+  }
 
   if (existing) {
     // Don't overwrite local unsynced changes
     if (!existing.is_synced) {
-      console.log('Skipping server incident update - local has unsynced changes:', incident.id);
+      console.log('Skipping server incident update - local has unsynced changes:', existing.id);
       return;
     }
 
@@ -240,7 +254,7 @@ async function upsertIncident(incident: any): Promise<void> {
         incident.updated_at,
         incident.created_by || null,
         incident.updated_by || null,
-        incident.id,
+        existing.id,
       ]
     );
   } else {
