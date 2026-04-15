@@ -231,7 +231,11 @@ async function syncPatient(
       break;
       
     case 'UPDATE':
-      if (!operation.server_id) {
+      let patientServerId = operation.server_id;
+      if (!patientServerId) {
+        patientServerId = await getPatientServerId(operation.local_id);
+      }
+      if (!patientServerId) {
         throw new Error('Cannot update patient: no server_id');
       }
       
@@ -246,9 +250,9 @@ async function syncPatient(
         incident_id: updateServerIncidentId,
       };
       
-      console.log('Updating patient with server id:', operation.server_id);
-      await api.patch(endpoints.patients.update(operation.server_id), updatePayload);
-      await markPatientSynced(operation.local_id, operation.server_id, updateServerIncidentId);
+      console.log('Updating patient with server id:', patientServerId);
+      await api.patch(endpoints.patients.update(patientServerId), updatePayload);
+      await markPatientSynced(operation.local_id, patientServerId, updateServerIncidentId);
       break;
       
     default:

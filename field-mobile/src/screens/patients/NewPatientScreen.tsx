@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
-import { createPatient, updatePatient, getPatientById } from '../../database/patients-db';
+import { createPatient, updatePatient, getPatientById, getPatientServerId } from '../../database/patients-db';
 import { addToSyncQueue } from '../../database/sync-queue';
 import { useSyncStore } from '../../stores/sync.store';
 import { TriageLevel } from '../../types/database';
@@ -164,6 +164,7 @@ export function NewPatientScreen() {
           medical_history: medicalHistory,
         });
 
+        const patientServerId = await getPatientServerId(patientId);
         await addToSyncQueue('patients', patientId, 'UPDATE', {
           incident_id: incidentId,
           first_name: firstName.trim() || undefined,
@@ -174,7 +175,7 @@ export function NewPatientScreen() {
           chief_complaint: condition.trim(),
           observations,
           medical_history: medicalHistory,
-        });
+        }, { serverId: patientServerId || undefined });
       } else {
         // Create patient locally
         const patient = await createPatient({
