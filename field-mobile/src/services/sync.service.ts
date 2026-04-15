@@ -335,19 +335,6 @@ async function syncPhoto(
       throw new Error(`Incident ${payload.incident_id} not yet synced to server. Will retry after incident syncs.`);
     }
     
-    // Check if photos already exist on server before uploading (prevents duplicates)
-    try {
-      const { data: serverPhotos } = await api.get(endpoints.photos.byIncident(serverIncidentId));
-      if (serverPhotos && serverPhotos.length > 0) {
-        const serverPhoto = serverPhotos[0];
-        console.log('Server photos already exist for incident, skipping upload:', serverPhoto.id);
-        await markPhotoAsSynced(operation.local_id, serverPhoto.id, serverPhoto.public_url);
-        return;
-      }
-    } catch (err: any) {
-      console.log('Could not check server photos, will proceed with upload:', err.message);
-    }
-    
     // Replace local incident_id with server incident_id
     const photoPayload = {
       ...payload,
